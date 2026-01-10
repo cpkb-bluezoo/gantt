@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="properties-test" default="test" basedir=".">
+    
+    <description>
+        Tests property handling: property, loadfile, loadproperties,
+        xmlproperty, condition, available, tstamp, basename, dirname
+    </description>
+    
+    <!-- Basic property setting -->
+    <property name="test.name" value="properties-test"/>
+    <property name="test.version" value="1.0"/>
+    
+    <!-- Property with variable reference -->
+    <property name="test.fullname" value="${test.name}-${test.version}"/>
+    
+    <!-- Property from environment -->
+    <property environment="env"/>
+    
+    <!-- Build directories -->
+    <property name="build.dir" value="${basedir}/build"/>
+    
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+        
+        <!-- Timestamp -->
+        <tstamp>
+            <format property="build.time" pattern="yyyy-MM-dd HH:mm:ss"/>
+            <format property="build.year" pattern="yyyy"/>
+        </tstamp>
+        
+        <echo message="Build time: ${build.time}"/>
+        <echo message="Build year: ${build.year}"/>
+    </target>
+    
+    <target name="test-loadfile" depends="init">
+        <!-- Create a test file to load -->
+        <echo file="${build.dir}/message.txt">Hello from loaded file!</echo>
+        
+        <!-- Load file into property -->
+        <loadfile property="loaded.message" srcFile="${build.dir}/message.txt"/>
+        <echo message="Loaded: ${loaded.message}"/>
+    </target>
+    
+    <target name="test-loadproperties" depends="init">
+        <!-- Create a properties file -->
+        <echo file="${build.dir}/test.properties">
+db.host=localhost
+db.port=5432
+db.name=testdb
+</echo>
+        
+        <!-- Load properties -->
+        <property file="${build.dir}/test.properties" prefix="loaded"/>
+        <echo message="DB Host: ${loaded.db.host}"/>
+        <echo message="DB Port: ${loaded.db.port}"/>
+    </target>
+    
+    <target name="test-xmlproperty" depends="init">
+        <!-- Create XML config file -->
+        <echo file="${build.dir}/config.xml"><![CDATA[<?xml version="1.0"?>
+<config>
+    <database host="localhost" port="5432">
+        <name>mydb</name>
+    </database>
+    <server port="8080"/>
+</config>
+]]></echo>
+        
+        <!-- Load XML as properties -->
+        <xmlproperty file="${build.dir}/config.xml"/>
+        <echo message="XML DB host: ${config.database.host}"/>
+        <echo message="XML DB name: ${config.database.name}"/>
+        <echo message="XML server port: ${config.server.port}"/>
+    </target>
+    
+    <target name="test-condition" depends="init">
+        <!-- Test isset condition -->
+        <condition property="has.test.name" isset="test.name"/>
+        <echo message="has.test.name = ${has.test.name}"/>
+        
+        <!-- Test equals condition -->
+        <condition property="version.is.one" arg1="${test.version}" arg2="1.0"/>
+        <echo message="version.is.one = ${version.is.one}"/>
+        
+        <!-- Test available file -->
+        <condition property="build.exists" available_file="${build.dir}"/>
+        <echo message="build.exists = ${build.exists}"/>
+        
+        <!-- Test OS family -->
+        <condition property="is.unix" os_family="unix"/>
+        <echo message="is.unix = ${is.unix}"/>
+    </target>
+    
+    <target name="test-available" depends="init">
+        <!-- Test file availability -->
+        <available file="${build.dir}" property="build.dir.exists"/>
+        <echo message="build.dir.exists = ${build.dir.exists}"/>
+        
+        <!-- Test non-existent file -->
+        <available file="${build.dir}/nonexistent.txt" property="nonexistent.exists"/>
+        <echo message="nonexistent.exists = ${nonexistent.exists}"/>
+    </target>
+    
+    <target name="test-basename-dirname" depends="init">
+        <property name="test.path" value="/home/user/projects/myapp/src/Main.java"/>
+        
+        <basename property="file.name" file="${test.path}"/>
+        <dirname property="file.dir" file="${test.path}"/>
+        <basename property="file.base" file="${test.path}" suffix=".java"/>
+        
+        <echo message="Full path: ${test.path}"/>
+        <echo message="Basename: ${file.name}"/>
+        <echo message="Dirname: ${file.dir}"/>
+        <echo message="Base (no ext): ${file.base}"/>
+    </target>
+    
+    <target name="test-length" depends="init">
+        <echo file="${build.dir}/length-test.txt">Hello World</echo>
+        
+        <length file="${build.dir}/length-test.txt" property="file.length"/>
+        <length string="Hello World" property="string.length"/>
+        
+        <echo message="File length: ${file.length}"/>
+        <echo message="String length: ${string.length}"/>
+    </target>
+    
+    <target name="test-tempfile" depends="init">
+        <tempfile property="temp.file" destdir="${build.dir}" prefix="test" suffix=".tmp"/>
+        <echo message="Temp file: ${temp.file}"/>
+    </target>
+    
+    <target name="test-uptodate" depends="init">
+        <!-- Create source and target files -->
+        <echo file="${build.dir}/source.txt">Source content</echo>
+        <sleep seconds="1"/>
+        <echo file="${build.dir}/target.txt">Target content</echo>
+        
+        <!-- Target is newer, so should be up-to-date -->
+        <uptodate property="target.uptodate" 
+                  srcfile="${build.dir}/source.txt" 
+                  targetfile="${build.dir}/target.txt"/>
+        <echo message="target.uptodate = ${target.uptodate}"/>
+    </target>
+    
+    <target name="test" depends="init, test-loadfile, test-loadproperties, 
+                                  test-xmlproperty, test-condition, test-available,
+                                  test-basename-dirname, test-length, test-tempfile,
+                                  test-uptodate">
+        <echo message=""/>
+        <echo message="=== Property Tests Complete ==="/>
+        <echo message="test.name = ${test.name}"/>
+        <echo message="test.fullname = ${test.fullname}"/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+    
+</project>
+
+

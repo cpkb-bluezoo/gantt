@@ -1,0 +1,54 @@
+CONTRIBUTING TO GANTT
+=====================
+
+Coding Standards
+----------------
+
+1. BRACE STYLE FOR CONTROL STATEMENTS
+
+   All control statements (if, else, for, while, do, switch) must use braces,
+   even for single-statement bodies. The opening brace should be on the same
+   line as the control statement, and the body should be on subsequent lines.
+
+   Bad:
+       if (!ptr) return NULL;
+       if (x > 0) x--;
+
+   Good:
+       if (!ptr) {
+           return NULL;
+       }
+       if (x > 0) {
+           x--;
+       }
+
+   This rule improves readability and prevents errors when adding statements
+   to control blocks.
+
+2. INDENTATION
+
+   Use 4 spaces for indentation. Do not use tabs.
+
+3. LINE LENGTH
+
+   Prefer lines under 100 characters. Break long lines at logical points.
+
+4. NAMING CONVENTIONS
+
+   - Types: suffix with _t (e.g., token_t, ast_node_t)
+   - Functions: lowercase with underscores (e.g., parser_advance)
+   - Constants/Macros: uppercase with underscores (e.g., MOD_PUBLIC)
+   - Local variables: lowercase with underscores
+
+5. COMMENTS
+
+   - Use /* */ for all comments
+   - File headers should include copyright and license information
+   - Document non-obvious code with explanatory comments
+
+6. MEMORY MANAGEMENT
+
+   - Always check return values of malloc/calloc
+   - Free allocated memory in appropriate cleanup paths
+   - Use consistent patterns for resource acquisition and release
+

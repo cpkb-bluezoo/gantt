@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="archives-test" default="test" basedir=".">
+    
+    <description>
+        Tests archive operations: zip, unzip, tar, untar, gzip, gunzip, bzip2, bunzip2
+    </description>
+    
+    <property name="src.dir" value="${basedir}/src"/>
+    <property name="build.dir" value="${basedir}/build"/>
+    
+    <target name="init">
+        <mkdir dir="${src.dir}"/>
+        <mkdir dir="${build.dir}"/>
+        
+        <!-- Create test files -->
+        <echo file="${src.dir}/readme.txt">This is a readme file for archive testing.</echo>
+        <echo file="${src.dir}/data.txt">Some data content here.
+Line 2
+Line 3</echo>
+        <mkdir dir="${src.dir}/subdir"/>
+        <echo file="${src.dir}/subdir/nested.txt">Nested file in subdirectory</echo>
+    </target>
+    
+    <target name="test-zip" depends="init">
+        <echo message="Testing zip..."/>
+        
+        <zip destfile="${build.dir}/test.zip" basedir="${src.dir}"/>
+        
+        <available file="${build.dir}/test.zip" property="zip.exists"/>
+        <echo message="ZIP created: ${zip.exists}"/>
+    </target>
+    
+    <target name="test-unzip" depends="test-zip">
+        <echo message="Testing unzip..."/>
+        
+        <mkdir dir="${build.dir}/unzipped"/>
+        <unzip src="${build.dir}/test.zip" dest="${build.dir}/unzipped"/>
+        
+        <available file="${build.dir}/unzipped/readme.txt" property="unzip.exists"/>
+        <echo message="Unzipped: ${unzip.exists}"/>
+    </target>
+    
+    <target name="test-tar" depends="test-unzip">
+        <echo message="Testing tar..."/>
+        
+        <tar destfile="${build.dir}/test.tar" basedir="${src.dir}"/>
+        
+        <available file="${build.dir}/test.tar" property="tar.exists"/>
+        <echo message="TAR created: ${tar.exists}"/>
+    </target>
+    
+    <target name="test-tar-gz" depends="test-tar">
+        <echo message="Testing tar.gz..."/>
+        
+        <tar destfile="${build.dir}/test.tar.gz" basedir="${src.dir}" compression="gzip"/>
+        
+        <available file="${build.dir}/test.tar.gz" property="targz.exists"/>
+        <echo message="TAR.GZ created: ${targz.exists}"/>
+    </target>
+    
+    <target name="test-untar" depends="test-tar-gz">
+        <echo message="Testing untar..."/>
+        
+        <mkdir dir="${build.dir}/untarred"/>
+        <untar src="${build.dir}/test.tar" dest="${build.dir}/untarred"/>
+        
+        <available file="${build.dir}/untarred/readme.txt" property="untar.exists"/>
+        <echo message="Untarred: ${untar.exists}"/>
+        
+        <!-- Test untar with compression -->
+        <mkdir dir="${build.dir}/untarred-gz"/>
+        <untar src="${build.dir}/test.tar.gz" dest="${build.dir}/untarred-gz" compression="gzip"/>
+        
+        <available file="${build.dir}/untarred-gz/readme.txt" property="untargz.exists"/>
+        <echo message="Untarred GZ: ${untargz.exists}"/>
+    </target>
+    
+    <target name="test-gzip" depends="test-untar">
+        <echo message="Testing gzip..."/>
+        
+        <copy file="${src.dir}/readme.txt" tofile="${build.dir}/to-gzip.txt"/>
+        <gzip src="${build.dir}/to-gzip.txt" destfile="${build.dir}/to-gzip.txt.gz"/>
+        
+        <available file="${build.dir}/to-gzip.txt.gz" property="gzip.exists"/>
+        <echo message="GZIP created: ${gzip.exists}"/>
+    </target>
+    
+    <target name="test-gunzip" depends="test-gzip">
+        <echo message="Testing gunzip..."/>
+        
+        <mkdir dir="${build.dir}/gunzipped"/>
+        <gunzip src="${build.dir}/to-gzip.txt.gz" dest="${build.dir}/gunzipped/"/>
+        
+        <available file="${build.dir}/gunzipped/to-gzip.txt" property="gunzip.exists"/>
+        <echo message="Gunzipped: ${gunzip.exists}"/>
+    </target>
+    
+    <target name="test-bzip2" depends="test-gunzip">
+        <echo message="Testing bzip2..."/>
+        
+        <copy file="${src.dir}/readme.txt" tofile="${build.dir}/to-bzip.txt"/>
+        <bzip2 src="${build.dir}/to-bzip.txt" destfile="${build.dir}/to-bzip.txt.bz2"/>
+        
+        <available file="${build.dir}/to-bzip.txt.bz2" property="bzip.exists"/>
+        <echo message="BZIP2 created: ${bzip.exists}"/>
+    </target>
+    
+    <target name="test-bunzip2" depends="test-bzip2">
+        <echo message="Testing bunzip2..."/>
+        
+        <mkdir dir="${build.dir}/bunzipped"/>
+        <bunzip2 src="${build.dir}/to-bzip.txt.bz2" dest="${build.dir}/bunzipped/"/>
+        
+        <available file="${build.dir}/bunzipped/to-bzip.txt" property="bunzip.exists"/>
+        <echo message="Bunzipped: ${bunzip.exists}"/>
+    </target>
+    
+    <target name="test" depends="init, test-zip, test-unzip, test-tar, test-tar-gz, 
+                                  test-untar, test-gzip, test-gunzip, test-bzip2, test-bunzip2">
+        <echo message=""/>
+        <echo message="=== Archive Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${src.dir}"/>
+        <delete dir="${build.dir}"/>
+    </target>
+    
+</project>
+
+

@@ -1,0 +1,47 @@
+#!/bin/sh
+# gantt_tar - Create TAR archive
+#
+# Environment variables:
+#   destfile    - Output tar file path
+#   basedir     - Base directory for files
+#   filelist    - Newline-separated list of files to include
+#   compression - Compression type: none, gzip, bzip2, xz
+#   longfile    - How to handle long file names (gnu, posix, etc.)
+
+destfile="${destfile:-}"
+basedir="${basedir:-.}"
+compression="${compression:-none}"
+
+if [ -z "$destfile" ]; then
+    echo "tar: 'destfile' attribute required" >&2
+    exit 1
+fi
+
+# Create parent directory if needed
+destdir=$(dirname "$destfile")
+[ -n "$destdir" ] && [ "$destdir" != "." ] && mkdir -p "$destdir"
+
+# Determine compression flag
+case "$compression" in
+    gzip|gz)   comp_flag="z" ;;
+    bzip2|bz2) comp_flag="j" ;;
+    xz)        comp_flag="J" ;;
+    *)         comp_flag="" ;;
+esac
+
+# Auto-detect compression from filename
+case "$destfile" in
+    *.tar.gz|*.tgz)   comp_flag="z" ;;
+    *.tar.bz2|*.tbz2) comp_flag="j" ;;
+    *.tar.xz|*.txz)   comp_flag="J" ;;
+esac
+
+# If filelist provided, create tar from list
+if [ -n "$filelist" ]; then
+    echo "$filelist" | tar -c${comp_flag}f "$destfile" -T -
+elif [ -d "$basedir" ]; then
+    tar -c${comp_flag}f "$destfile" -C "$basedir" .
+fi
+
+exit 0
+

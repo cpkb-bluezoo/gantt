@@ -1,0 +1,11 @@
+package com.example;
+
+public class Util {
+    public static int add(int a, int b) {
+        return a + b;
+    }
+    
+    public static String reverse(String s) {
+        return new StringBuilder(s).reverse().toString();
+    }
+}

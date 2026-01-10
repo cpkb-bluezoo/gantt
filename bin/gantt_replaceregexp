@@ -1,0 +1,57 @@
+#!/bin/sh
+# gantt_replaceregexp - Replace text using regular expressions
+#
+# Environment variables:
+#   file       - Single file to process
+#   filelist   - Newline-separated list of files
+#   match      - Regular expression to match
+#   replace    - Replacement string (can use backreferences \1, \2, etc.)
+#   flags      - Regex flags (g for global, i for case-insensitive)
+#   byline     - If true, process line by line (default: true)
+
+file="${file:-}"
+match="${match:-}"
+replace="${replace:-}"
+flags="${flags:-g}"
+byline="${byline:-true}"
+
+if [ -z "$match" ]; then
+    echo "replaceregexp: 'match' attribute required" >&2
+    exit 1
+fi
+
+replace_in_file() {
+    local f="$1"
+    if [ ! -f "$f" ]; then
+        echo "replaceregexp: file not found: $f" >&2
+        return 1
+    fi
+    
+    # Build sed flags
+    sed_flags=""
+    case "$flags" in
+        *g*) sed_flags="${sed_flags}g" ;;
+    esac
+    case "$flags" in
+        *i*) sed_flags="${sed_flags}I" ;;
+    esac
+    
+    # Use sed for replacement
+    sed -i.bak "s/${match}/${replace}/${sed_flags}" "$f"
+    rm -f "$f.bak"
+}
+
+# Process single file
+if [ -n "$file" ]; then
+    replace_in_file "$file"
+fi
+
+# Process filelist
+if [ -n "$filelist" ]; then
+    echo "$filelist" | while IFS= read -r f; do
+        [ -n "$f" ] && replace_in_file "$f"
+    done
+fi
+
+exit 0
+

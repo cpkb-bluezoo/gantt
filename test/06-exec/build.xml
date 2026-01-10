@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="exec-test" default="test" basedir=".">
+    
+    <description>
+        Tests exec task: command execution with various options
+    </description>
+    
+    <property name="build.dir" value="${basedir}/build"/>
+    
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+    </target>
+    
+    <target name="test-basic-exec" depends="init">
+        <echo message="Testing basic exec..."/>
+        
+        <!-- Simple command -->
+        <exec executable="echo">
+            <arg value="Hello from exec"/>
+        </exec>
+    </target>
+    
+    <target name="test-output-capture" depends="test-basic-exec">
+        <echo message="Testing output capture..."/>
+        
+        <!-- Capture output to property -->
+        <exec executable="date" outputproperty="current.date"/>
+        <echo message="Date output: ${current.date}"/>
+        
+        <!-- Capture exit code -->
+        <exec executable="true" resultproperty="exit.code"/>
+        <echo message="Exit code: ${exit.code}"/>
+    </target>
+    
+    <target name="test-working-dir" depends="test-output-capture">
+        <echo message="Testing working directory..."/>
+        
+        <!-- Execute in specific directory -->
+        <exec executable="pwd" dir="${build.dir}" outputproperty="pwd.output"/>
+        <echo message="Working dir: ${pwd.output}"/>
+    </target>
+    
+    <target name="test-env-vars" depends="test-working-dir">
+        <echo message="Testing environment variables..."/>
+        
+        <!-- Pass environment variable -->
+        <exec executable="sh">
+            <arg value="-c"/>
+            <arg value="echo TEST_VAR=$TEST_VAR"/>
+            <env key="TEST_VAR" value="hello_from_gantt"/>
+        </exec>
+    </target>
+    
+    <target name="test-output-file" depends="test-env-vars">
+        <echo message="Testing output to file..."/>
+        
+        <!-- Redirect output to file -->
+        <exec executable="echo" output="${build.dir}/exec-output.txt">
+            <arg value="Output written to file"/>
+        </exec>
+        
+        <loadfile property="file.contents" srcFile="${build.dir}/exec-output.txt"/>
+        <echo message="File contents: ${file.contents}"/>
+    </target>
+    
+    <target name="test-failonerror" depends="test-output-file">
+        <echo message="Testing failonerror=false..."/>
+        
+        <!-- Command that fails but shouldn't stop build -->
+        <exec executable="false" failonerror="false" resultproperty="fail.result"/>
+        <echo message="Failed command result: ${fail.result}"/>
+        <echo message="Build continued after failed command"/>
+    </target>
+    
+    <target name="test" depends="init, test-basic-exec, test-output-capture, 
+                                  test-working-dir, test-env-vars, test-output-file,
+                                  test-failonerror">
+        <echo message=""/>
+        <echo message="=== Exec Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+    
+</project>
+

@@ -1,0 +1,35 @@
+#!/bin/sh
+# gantt_unzip - Extract ZIP archive
+#
+# Environment variables:
+#   src        - Source ZIP file
+#   dest       - Destination directory
+#   overwrite  - If true, overwrite existing files (default: true)
+
+src="${src:-}"
+dest="${dest:-.}"
+overwrite="${overwrite:-true}"
+
+if [ -z "$src" ]; then
+    echo "unzip: 'src' attribute required" >&2
+    exit 1
+fi
+
+if [ ! -f "$src" ]; then
+    echo "unzip: file not found: $src" >&2
+    exit 1
+fi
+
+# Create destination directory
+mkdir -p "$dest"
+
+# Build unzip options
+unzip_opts="-q"
+if [ "$overwrite" = "true" ]; then
+    unzip_opts="${unzip_opts}o"
+fi
+
+unzip $unzip_opts "$src" -d "$dest"
+
+exit 0
+

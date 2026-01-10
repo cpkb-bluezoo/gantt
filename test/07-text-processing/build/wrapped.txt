@@ -1,0 +1,14 @@
+=== BEGIN ===${line.separator}
+Line 1: foo123bar
+Line 2: abc456def
+Line 3: test789end
+Hello @NAME@!
+Welcome to @PROJECT@.
+Your version is @VERSION@.
+Today is @DATE@.
+# Configuration file
+server.host=localhost
+server.port=8080
+app.name=MyApp
+app.debug=true
+${line.separator}=== END ===

@@ -1,0 +1,4 @@
+Hello @NAME@!
+Welcome to @PROJECT@.
+Your version is @VERSION@.
+Today is @DATE@.

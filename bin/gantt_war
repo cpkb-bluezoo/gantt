@@ -1,0 +1,76 @@
+#!/bin/sh
+# gantt_war - Create WAR (Web Application Archive) file
+#
+# Environment variables:
+#   destfile   - Output WAR file path
+#   basedir    - Base directory for files
+#   webxml     - Path to web.xml file
+#   filelist   - Newline-separated list of files to include
+#   update     - If true, update existing archive
+#   compress   - If true/false, control compression (default: true)
+
+destfile="${destfile:-}"
+basedir="${basedir:-.}"
+webxml="${webxml:-}"
+update="${update:-false}"
+compress="${compress:-true}"
+
+if [ -z "$destfile" ]; then
+    echo "war: 'destfile' attribute required" >&2
+    exit 1
+fi
+
+# Create parent directory if needed
+mkdir -p "$(dirname "$destfile")"
+
+# Build jar command options
+jar_opts="cf"
+if [ "$update" = "true" ] && [ -f "$destfile" ]; then
+    jar_opts="uf"
+fi
+if [ "$compress" = "false" ]; then
+    jar_opts="${jar_opts}0"
+fi
+
+# Create temp directory for WAR structure
+tmpdir=$(mktemp -d)
+trap "rm -rf '$tmpdir'" EXIT
+
+# Copy web.xml if specified
+if [ -n "$webxml" ] && [ -f "$webxml" ]; then
+    mkdir -p "$tmpdir/WEB-INF"
+    cp "$webxml" "$tmpdir/WEB-INF/web.xml"
+fi
+
+# Copy files from basedir
+if [ -d "$basedir" ]; then
+    (cd "$basedir" && find . -type f | while IFS= read -r f; do
+        dir=$(dirname "$f")
+        mkdir -p "$tmpdir/$dir"
+        cp "$basedir/$f" "$tmpdir/$f"
+    done)
+fi
+
+# Process filelist
+if [ -n "$filelist" ]; then
+    echo "$filelist" | while IFS= read -r f; do
+        if [ -n "$f" ] && [ -f "$f" ]; then
+            # Determine destination path within WAR
+            if [ -n "$basedir" ] && [ "${f#$basedir}" != "$f" ]; then
+                # File is under basedir, use relative path
+                rel="${f#$basedir/}"
+            else
+                rel=$(basename "$f")
+            fi
+            dir=$(dirname "$rel")
+            mkdir -p "$tmpdir/$dir"
+            cp "$f" "$tmpdir/$rel"
+        fi
+    done
+fi
+
+# Create the WAR file
+(cd "$tmpdir" && jar "$jar_opts" "$destfile" .)
+
+exit 0
+

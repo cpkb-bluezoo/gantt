@@ -1,0 +1,6 @@
+#!/bin/sh
+# gantt_filterchain - Stub for filterchain element
+# Filterchain is a nested element, not a task, but may appear at project level
+# This stub allows parsing to continue
+exit 0
+

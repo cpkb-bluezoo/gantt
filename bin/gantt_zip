@@ -1,0 +1,45 @@
+#!/bin/sh
+# gantt_zip - Create ZIP archive
+#
+# Environment variables:
+#   destfile   - Output ZIP file path
+#   basedir    - Base directory for files
+#   filelist   - Newline-separated list of files to include
+#   update     - If true, update existing archive
+#   compress   - If true/false, control compression (default: true)
+#   includes   - Pattern of files to include
+#   excludes   - Pattern of files to exclude
+
+destfile="${destfile:-}"
+basedir="${basedir:-.}"
+update="${update:-false}"
+compress="${compress:-true}"
+
+if [ -z "$destfile" ]; then
+    echo "zip: 'destfile' attribute required" >&2
+    exit 1
+fi
+
+# Create parent directory if needed
+destdir=$(dirname "$destfile")
+[ -n "$destdir" ] && [ "$destdir" != "." ] && mkdir -p "$destdir"
+
+# Build zip options
+zip_opts="-r"
+if [ "$update" = "true" ]; then
+    zip_opts="-ru"
+fi
+if [ "$compress" = "false" ]; then
+    zip_opts="${zip_opts}0"
+fi
+zip_opts="${zip_opts}q"  # Quiet mode
+
+# If filelist provided, create zip from list
+if [ -n "$filelist" ]; then
+    echo "$filelist" | zip "$zip_opts" "$destfile" -@
+elif [ -d "$basedir" ]; then
+    (cd "$basedir" && zip $zip_opts "$destfile" .)
+fi
+
+exit 0
+

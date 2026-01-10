@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="checksum-test" default="test" basedir=".">
+    
+    <description>
+        Tests checksum task for file verification
+    </description>
+    
+    <property name="build.dir" value="${basedir}/build"/>
+    
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+        
+        <!-- Create test file with known content -->
+        <echo file="${build.dir}/test.txt">Hello World</echo>
+    </target>
+    
+    <target name="test-md5" depends="init">
+        <echo message="Testing MD5 checksum..."/>
+        
+        <!-- Use exec with md5 (macOS) or md5sum (Linux) -->
+        <exec executable="sh" outputproperty="md5.sum" failonerror="false">
+            <arg value="-c"/>
+            <arg value="md5 -q ${build.dir}/test.txt 2>/dev/null || md5sum ${build.dir}/test.txt 2>/dev/null | cut -d' ' -f1"/>
+        </exec>
+        <echo message="MD5: ${md5.sum}"/>
+    </target>
+    
+    <target name="test-sha1" depends="test-md5">
+        <echo message="Testing SHA-1 checksum..."/>
+        
+        <!-- Use exec with shasum (macOS/Linux) -->
+        <exec executable="sh" outputproperty="sha1.sum" failonerror="false">
+            <arg value="-c"/>
+            <arg value="shasum -a 1 ${build.dir}/test.txt | cut -d' ' -f1"/>
+        </exec>
+        <echo message="SHA-1: ${sha1.sum}"/>
+    </target>
+    
+    <target name="test-sha256" depends="test-sha1">
+        <echo message="Testing SHA-256 checksum..."/>
+        
+        <exec executable="sh" outputproperty="sha256.sum" failonerror="false">
+            <arg value="-c"/>
+            <arg value="shasum -a 256 ${build.dir}/test.txt | cut -d' ' -f1"/>
+        </exec>
+        <echo message="SHA-256: ${sha256.sum}"/>
+    </target>
+    
+    <target name="test" depends="init, test-md5, test-sha1, test-sha256">
+        <echo message=""/>
+        <echo message="=== Checksum Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+    
+</project>
+

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="java-compile-test" default="test" basedir=".">
+    
+    <description>
+        Tests Java compilation: javac, jar, java
+    </description>
+    
+    <property name="src.dir" value="${basedir}/src"/>
+    <property name="build.dir" value="${basedir}/build"/>
+    <property name="dist.dir" value="${basedir}/dist"/>
+    
+    <target name="init">
+        <mkdir dir="${src.dir}"/>
+        <mkdir dir="${src.dir}/com"/>
+        <mkdir dir="${src.dir}/com/example"/>
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${dist.dir}"/>
+        
+        <!-- Create Java source file -->
+        <echo file="${src.dir}/com/example/Hello.java"><![CDATA[
+package com.example;
+
+public class Hello {
+    public static void main(String[] args) {
+        System.out.println("Hello from Gantt!");
+        if (args.length > 0) {
+            System.out.println("Arguments: " + String.join(", ", args));
+        }
+    }
+    
+    public static String greet(String name) {
+        return "Hello, " + name + "!";
+    }
+}
+]]></echo>
+
+        <!-- Create a second class -->
+        <echo file="${src.dir}/com/example/Util.java"><![CDATA[
+package com.example;
+
+public class Util {
+    public static int add(int a, int b) {
+        return a + b;
+    }
+    
+    public static String reverse(String s) {
+        return new StringBuilder(s).reverse().toString();
+    }
+}
+]]></echo>
+    </target>
+    
+    <target name="compile" depends="init">
+        <echo message="Compiling Java sources..."/>
+        
+        <javac srcdir="${src.dir}" 
+               destdir="${build.dir}"
+               includeantruntime="false">
+        </javac>
+        
+        <echo message="Compilation complete"/>
+    </target>
+    
+    <target name="jar" depends="compile">
+        <echo message="Creating JAR file..."/>
+        
+        <jar destfile="${dist.dir}/hello.jar" basedir="${build.dir}">
+            <manifest>
+                <attribute name="Main-Class" value="com.example.Hello"/>
+                <attribute name="Built-By" value="Gantt"/>
+            </manifest>
+        </jar>
+        
+        <echo message="JAR created: ${dist.dir}/hello.jar"/>
+    </target>
+    
+    <target name="run" depends="jar">
+        <echo message="Running Java application..."/>
+        
+        <java jar="${dist.dir}/hello.jar" fork="true">
+            <arg value="arg1"/>
+            <arg value="arg2"/>
+        </java>
+        
+        <echo message=""/>
+        <echo message="Running with classpath..."/>
+        
+        <java classname="com.example.Hello" classpath="${build.dir}" fork="true">
+            <arg value="classpath-mode"/>
+        </java>
+    </target>
+    
+    <target name="test" depends="init, compile, jar, run">
+        <echo message=""/>
+        <echo message="=== Java Compile Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${src.dir}"/>
+        <delete dir="${build.dir}"/>
+        <delete dir="${dist.dir}"/>
+    </target>
+    
+</project>
+

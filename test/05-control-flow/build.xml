@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="control-flow-test" default="test" basedir=".">
+    
+    <description>
+        Tests control flow: antcall, parallel, sequential, fail (conditional)
+    </description>
+    
+    <property name="build.dir" value="${basedir}/build"/>
+    
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+    </target>
+    
+    <target name="helper-target">
+        <echo message="Helper target called!"/>
+        <echo file="${build.dir}/helper-called.txt">Helper was called at ${DSTAMP}</echo>
+    </target>
+    
+    <target name="test-antcall" depends="init">
+        <echo message="Testing antcall..."/>
+        <tstamp/>
+        
+        <antcall target="helper-target"/>
+        
+        <available file="${build.dir}/helper-called.txt" property="antcall.worked"/>
+        <echo message="Antcall worked: ${antcall.worked}"/>
+    </target>
+    
+    <target name="parallel-task-1">
+        <echo message="Parallel task 1 starting..."/>
+        <echo file="${build.dir}/parallel1.txt">Task 1 output</echo>
+        <echo message="Parallel task 1 complete"/>
+    </target>
+    
+    <target name="parallel-task-2">
+        <echo message="Parallel task 2 starting..."/>
+        <echo file="${build.dir}/parallel2.txt">Task 2 output</echo>
+        <echo message="Parallel task 2 complete"/>
+    </target>
+    
+    <target name="parallel-task-3">
+        <echo message="Parallel task 3 starting..."/>
+        <echo file="${build.dir}/parallel3.txt">Task 3 output</echo>
+        <echo message="Parallel task 3 complete"/>
+    </target>
+    
+    <target name="test-parallel" depends="test-antcall">
+        <echo message="Testing parallel execution..."/>
+        
+        <parallel>
+            <antcall target="parallel-task-1"/>
+            <antcall target="parallel-task-2"/>
+            <antcall target="parallel-task-3"/>
+        </parallel>
+        
+        <available file="${build.dir}/parallel1.txt" property="p1.exists"/>
+        <available file="${build.dir}/parallel2.txt" property="p2.exists"/>
+        <available file="${build.dir}/parallel3.txt" property="p3.exists"/>
+        
+        <echo message="Parallel 1: ${p1.exists}"/>
+        <echo message="Parallel 2: ${p2.exists}"/>
+        <echo message="Parallel 3: ${p3.exists}"/>
+    </target>
+    
+    <target name="test-sequential" depends="test-parallel">
+        <echo message="Testing sequential..."/>
+        
+        <sequential>
+            <echo file="${build.dir}/seq1.txt">Sequential 1</echo>
+            <echo file="${build.dir}/seq2.txt">Sequential 2</echo>
+            <echo file="${build.dir}/seq3.txt">Sequential 3</echo>
+        </sequential>
+        
+        <available file="${build.dir}/seq3.txt" property="seq.complete"/>
+        <echo message="Sequential complete: ${seq.complete}"/>
+    </target>
+    
+    <target name="test-conditional-fail" depends="test-sequential">
+        <echo message="Testing conditional fail (should NOT fail)..."/>
+        
+        <!-- This should NOT fail because the condition is false -->
+        <property name="should.fail" value="false"/>
+        
+        <fail message="This should not be seen" if="nonexistent.property"/>
+        
+        <echo message="Conditional fail test passed (did not fail)"/>
+    </target>
+    
+    <target name="test-sleep" depends="test-conditional-fail">
+        <echo message="Testing sleep (1 second)..."/>
+        
+        <tstamp>
+            <format property="before.sleep" pattern="HH:mm:ss"/>
+        </tstamp>
+        
+        <sleep seconds="1"/>
+        
+        <tstamp>
+            <format property="after.sleep" pattern="HH:mm:ss"/>
+        </tstamp>
+        
+        <echo message="Before: ${before.sleep}, After: ${after.sleep}"/>
+    </target>
+    
+    <target name="test" depends="init, test-antcall, test-parallel, test-sequential, 
+                                  test-conditional-fail, test-sleep">
+        <echo message=""/>
+        <echo message="=== Control Flow Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+    
+</project>
+
+

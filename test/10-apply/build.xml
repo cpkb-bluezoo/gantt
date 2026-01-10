@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="apply-test" default="test" basedir=".">
+    
+    <description>
+        Tests apply/execon task for running commands on filesets
+    </description>
+    
+    <property name="src.dir" value="${basedir}/src"/>
+    <property name="build.dir" value="${basedir}/build"/>
+    
+    <target name="init">
+        <mkdir dir="${src.dir}"/>
+        <mkdir dir="${build.dir}"/>
+        
+        <!-- Create test files -->
+        <echo file="${src.dir}/file1.txt">Content of file 1</echo>
+        <echo file="${src.dir}/file2.txt">Content of file 2</echo>
+        <echo file="${src.dir}/file3.txt">Content of file 3</echo>
+    </target>
+    
+    <target name="test-apply" depends="init">
+        <echo message="Testing apply task..."/>
+        
+        <!-- Run wc -l on each file -->
+        <apply executable="wc" parallel="false">
+            <arg value="-l"/>
+            <fileset dir="${src.dir}" includes="*.txt"/>
+        </apply>
+    </target>
+    
+    <target name="test-apply-output" depends="test-apply">
+        <echo message="Testing apply with output capture..."/>
+        
+        <!-- Run cat on files and capture output -->
+        <apply executable="cat" 
+               outputproperty="cat.output"
+               parallel="true">
+            <fileset dir="${src.dir}" includes="*.txt"/>
+        </apply>
+        
+        <echo message="Combined output:"/>
+        <echo message="${cat.output}"/>
+    </target>
+    
+    <target name="test-file-iteration" depends="test-apply-output">
+        <echo message="Testing simple file iteration..."/>
+        
+        <!-- Just echo the filenames -->
+        <apply executable="basename" parallel="false">
+            <fileset dir="${src.dir}" includes="*.txt"/>
+        </apply>
+        
+        <echo message="File iteration complete"/>
+    </target>
+    
+    <target name="test" depends="init, test-apply, test-apply-output, test-file-iteration">
+        <echo message=""/>
+        <echo message="=== Apply Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${src.dir}"/>
+        <delete dir="${build.dir}"/>
+    </target>
+    
+</project>
+

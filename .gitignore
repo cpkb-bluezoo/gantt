@@ -1,0 +1,5 @@
+gantt
+*.o
+*.dSYM
+.DS_Store
+*~

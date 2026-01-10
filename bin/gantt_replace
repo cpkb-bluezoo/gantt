@@ -1,0 +1,58 @@
+#!/bin/sh
+# gantt_replace - Replace text in files
+#
+# Environment variables:
+#   file      - Single file to process
+#   filelist  - Newline-separated list of files
+#   token     - Text to search for
+#   value     - Replacement text
+#   summary   - If true, print summary
+
+file="${file:-}"
+token="${token:-}"
+value="${value:-}"
+summary="${summary:-false}"
+
+if [ -z "$token" ]; then
+    echo "replace: 'token' attribute required" >&2
+    exit 1
+fi
+
+count=0
+
+replace_in_file() {
+    local f="$1"
+    if [ ! -f "$f" ]; then
+        echo "replace: file not found: $f" >&2
+        return 1
+    fi
+    
+    # Use sed for replacement (escape special chars in token and value)
+    escaped_token=$(printf '%s\n' "$token" | sed 's/[[\.*^$()+?{|]/\\&/g')
+    escaped_value=$(printf '%s\n' "$value" | sed 's/[&/\]/\\&/g')
+    
+    if grep -q "$token" "$f" 2>/dev/null; then
+        sed -i.bak "s/${escaped_token}/${escaped_value}/g" "$f"
+        rm -f "$f.bak"
+        count=$((count + 1))
+    fi
+}
+
+# Process single file
+if [ -n "$file" ]; then
+    replace_in_file "$file"
+fi
+
+# Process filelist
+if [ -n "$filelist" ]; then
+    echo "$filelist" | while IFS= read -r f; do
+        [ -n "$f" ] && replace_in_file "$f"
+    done
+fi
+
+if [ "$summary" = "true" ]; then
+    echo "Replaced in $count file(s)"
+fi
+
+exit 0
+

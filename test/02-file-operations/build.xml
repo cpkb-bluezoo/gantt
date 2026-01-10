@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="file-operations-test" default="test" basedir=".">
+    
+    <description>
+        Tests file operations: mkdir, copy, move, delete, touch, chmod, concat, echo
+    </description>
+    
+    <property name="build.dir" value="${basedir}/build"/>
+    <property name="src.dir" value="${basedir}/src"/>
+    
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${src.dir}"/>
+        
+        <!-- Create test source files -->
+        <echo file="${src.dir}/file1.txt">This is file 1
+Line 2 of file 1</echo>
+        <echo file="${src.dir}/file2.txt">This is file 2
+Line 2 of file 2</echo>
+        <echo file="${src.dir}/file3.txt">This is file 3</echo>
+        
+        <mkdir dir="${src.dir}/subdir"/>
+        <echo file="${src.dir}/subdir/nested.txt">Nested file content</echo>
+    </target>
+    
+    <target name="test-mkdir" depends="init">
+        <echo message="Testing mkdir..."/>
+        
+        <!-- Create nested directories -->
+        <mkdir dir="${build.dir}/a/b/c"/>
+        
+        <!-- Verify -->
+        <available file="${build.dir}/a/b/c" property="nested.dir.exists"/>
+        <echo message="Nested dir exists: ${nested.dir.exists}"/>
+    </target>
+    
+    <target name="test-copy" depends="test-mkdir">
+        <echo message="Testing copy..."/>
+        
+        <!-- Copy single file -->
+        <copy file="${src.dir}/file1.txt" tofile="${build.dir}/copied1.txt"/>
+        
+        <!-- Copy to directory -->
+        <copy file="${src.dir}/file2.txt" todir="${build.dir}"/>
+        
+        <!-- Copy with fileset -->
+        <copy todir="${build.dir}/all-files">
+            <fileset dir="${src.dir}" includes="**/*.txt"/>
+        </copy>
+        
+        <available file="${build.dir}/copied1.txt" property="copy1.exists"/>
+        <available file="${build.dir}/file2.txt" property="copy2.exists"/>
+        <available file="${build.dir}/all-files/file1.txt" property="copy3.exists"/>
+        
+        <echo message="Copy single file: ${copy1.exists}"/>
+        <echo message="Copy to dir: ${copy2.exists}"/>
+        <echo message="Copy fileset: ${copy3.exists}"/>
+    </target>
+    
+    <target name="test-move" depends="test-copy">
+        <echo message="Testing move..."/>
+        
+        <!-- Create file to move -->
+        <echo file="${build.dir}/to-move.txt">File to be moved</echo>
+        
+        <!-- Move file -->
+        <move file="${build.dir}/to-move.txt" tofile="${build.dir}/moved.txt"/>
+        
+        <available file="${build.dir}/to-move.txt" property="orig.exists"/>
+        <available file="${build.dir}/moved.txt" property="moved.exists"/>
+        
+        <echo message="Original exists (should be empty): ${orig.exists}"/>
+        <echo message="Moved exists: ${moved.exists}"/>
+    </target>
+    
+    <target name="test-touch" depends="test-move">
+        <echo message="Testing touch..."/>
+        
+        <!-- Touch existing file -->
+        <touch file="${build.dir}/moved.txt"/>
+        
+        <!-- Touch new file (creates it) -->
+        <touch file="${build.dir}/touched.txt"/>
+        
+        <available file="${build.dir}/touched.txt" property="touched.exists"/>
+        <echo message="Touched file exists: ${touched.exists}"/>
+    </target>
+    
+    <target name="test-chmod" depends="test-touch">
+        <echo message="Testing chmod..."/>
+        
+        <!-- Make file executable -->
+        <chmod file="${build.dir}/touched.txt" perm="755"/>
+        
+        <echo message="chmod applied to touched.txt"/>
+    </target>
+    
+    <target name="test-concat" depends="test-chmod">
+        <echo message="Testing concat..."/>
+        
+        <!-- Concatenate files -->
+        <concat destfile="${build.dir}/combined.txt">
+            <fileset dir="${src.dir}" includes="file*.txt"/>
+        </concat>
+        
+        <!-- Concat with header/footer -->
+        <concat destfile="${build.dir}/with-header.txt" 
+                header="=== HEADER ===" 
+                footer="=== FOOTER ===">
+            <fileset dir="${src.dir}" includes="file1.txt"/>
+        </concat>
+        
+        <available file="${build.dir}/combined.txt" property="concat.exists"/>
+        <available file="${build.dir}/with-header.txt" property="header.exists"/>
+        
+        <echo message="Concat result exists: ${concat.exists}"/>
+        <echo message="With header exists: ${header.exists}"/>
+    </target>
+    
+    <target name="test-delete" depends="test-concat">
+        <echo message="Testing delete..."/>
+        
+        <!-- Create files to delete -->
+        <echo file="${build.dir}/delete-me.txt">Delete this file</echo>
+        <mkdir dir="${build.dir}/delete-dir"/>
+        <echo file="${build.dir}/delete-dir/inside.txt">Inside delete dir</echo>
+        
+        <!-- Delete single file -->
+        <delete file="${build.dir}/delete-me.txt"/>
+        
+        <!-- Delete directory -->
+        <delete dir="${build.dir}/delete-dir"/>
+        
+        <available file="${build.dir}/delete-me.txt" property="deleted.file.exists"/>
+        <available file="${build.dir}/delete-dir" property="deleted.dir.exists"/>
+        
+        <echo message="Deleted file exists (should be empty): ${deleted.file.exists}"/>
+        <echo message="Deleted dir exists (should be empty): ${deleted.dir.exists}"/>
+    </target>
+    
+    <target name="test-replace" depends="test-delete">
+        <echo message="Testing replace..."/>
+        
+        <!-- Create file with replaceable content -->
+        <echo file="${build.dir}/replace-test.txt">Hello @NAME@, welcome to @PLACE@!</echo>
+        
+        <!-- Replace tokens -->
+        <replace file="${build.dir}/replace-test.txt" token="@NAME@" value="World"/>
+        <replace file="${build.dir}/replace-test.txt" token="@PLACE@" value="Gantt"/>
+        
+        <loadfile property="replaced.content" srcFile="${build.dir}/replace-test.txt"/>
+        <echo message="After replace: ${replaced.content}"/>
+    </target>
+    
+    <target name="test" depends="init, test-mkdir, test-copy, test-move, test-touch, 
+                                  test-chmod, test-concat, test-delete, test-replace">
+        <echo message=""/>
+        <echo message="=== File Operations Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+        <delete dir="${src.dir}"/>
+    </target>
+    
+</project>
+
+

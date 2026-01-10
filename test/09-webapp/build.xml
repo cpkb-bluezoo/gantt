@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="webapp-test" default="test" basedir=".">
+    
+    <description>
+        Tests web application packaging: war task
+    </description>
+    
+    <property name="src.dir" value="${basedir}/src"/>
+    <property name="build.dir" value="${basedir}/build"/>
+    <property name="dist.dir" value="${basedir}/dist"/>
+    <property name="web.dir" value="${src.dir}/webapp"/>
+    
+    <target name="init">
+        <mkdir dir="${src.dir}"/>
+        <mkdir dir="${build.dir}"/>
+        <mkdir dir="${dist.dir}"/>
+        <mkdir dir="${web.dir}/WEB-INF"/>
+        <mkdir dir="${web.dir}/WEB-INF/classes"/>
+        <mkdir dir="${web.dir}/WEB-INF/lib"/>
+        
+        <!-- Create web.xml -->
+        <echo file="${web.dir}/WEB-INF/web.xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="4.0">
+    <display-name>Test Web Application</display-name>
+    <servlet>
+        <servlet-name>TestServlet</servlet-name>
+        <servlet-class>com.example.TestServlet</servlet-class>
+    </servlet>
+</web-app>
+]]></echo>
+        
+        <!-- Create index.html -->
+        <echo file="${web.dir}/index.html"><![CDATA[<!DOCTYPE html>
+<html>
+<head><title>Test App</title></head>
+<body><h1>Hello from Gantt WAR!</h1></body>
+</html>
+]]></echo>
+        
+        <!-- Create a dummy class file (just for structure) -->
+        <echo file="${web.dir}/WEB-INF/classes/test.txt">Placeholder for classes</echo>
+    </target>
+    
+    <target name="test-war" depends="init">
+        <echo message="Testing WAR creation..."/>
+        
+        <war destfile="${dist.dir}/test.war" 
+             webxml="${web.dir}/WEB-INF/web.xml"
+             basedir="${web.dir}">
+        </war>
+        
+        <available file="${dist.dir}/test.war" property="war.exists"/>
+        <echo message="WAR created: ${war.exists}"/>
+    </target>
+    
+    <target name="test-war-contents" depends="test-war">
+        <echo message="Verifying WAR contents..."/>
+        
+        <!-- Extract and check -->
+        <mkdir dir="${build.dir}/war-contents"/>
+        <unzip src="${dist.dir}/test.war" dest="${build.dir}/war-contents"/>
+        
+        <available file="${build.dir}/war-contents/WEB-INF/web.xml" property="webxml.exists"/>
+        <available file="${build.dir}/war-contents/index.html" property="index.exists"/>
+        
+        <echo message="web.xml in WAR: ${webxml.exists}"/>
+        <echo message="index.html in WAR: ${index.exists}"/>
+    </target>
+    
+    <target name="test" depends="init, test-war, test-war-contents">
+        <echo message=""/>
+        <echo message="=== Web Application Tests Complete ==="/>
+    </target>
+    
+    <target name="clean">
+        <delete dir="${src.dir}"/>
+        <delete dir="${build.dir}"/>
+        <delete dir="${dist.dir}"/>
+    </target>
+    
+</project>
+
