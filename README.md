@@ -46,29 +46,39 @@ This design keeps the core small while remaining fully extensible.
 
 ## Performance
 
-Gantt's C implementation can provide significant performance advantages, particularly for incremental builds.
+Gantt's C implementation provides significant performance advantages, especially when paired with a native compiler like [Genesis](https://github.com/cpkb-bluezoo/genesis).
 
-### Incremental Builds
-
-When source files haven't changed, Gantt is **6-8x faster** than Apache Ant:
-
-| Project | Gantt | Ant | Speedup |
-|---------|-------|-----|---------|
-| Gumdrop (592 files) | ~60ms | ~500ms | 8x |
-| Tomcat (1749 files) | ~70ms | ~410ms | 6x |
-
-This speed comes from Gantt's C-based timestamp checking that avoids JVM startup overhead entirely.
+*Benchmarks run on macOS with OpenJDK 21.0.9 (Corretto), testing Gumdrop (642 Java source files).*
 
 ### Clean Builds
 
-For clean builds, performance is comparable since both tools invoke the same `javac` compiler:
+| Build Tool | Time | vs Ant+javac |
+|------------|------|--------------|
+| Apache Ant + javac | ~3.8s | baseline |
+| Gantt + javac | ~4.2s | 0.9x |
+| **Gantt + Genesis** | **~1.9s** | **2.0x faster** |
 
-| Project | Gantt | Ant |
-|---------|-------|-----|
-| Gumdrop (592 files) | ~2.0s | ~2.1s |
-| Tomcat (1749 files) | ~4.3s | ~4.3s |
+Gantt + javac is slightly slower than Ant for clean builds because Ant uses an in-process compiler API while Gantt forks external processes. However, pairing Gantt with the Genesis compiler eliminates all JVM overhead, cutting build time in half.
 
-**Note**: Projects with multiple `javac` invocations may see a small performance penalty (~0.5-1s) because Gantt spawns separate JVM processes for each compilation, while Ant uses an in-process compiler API. This trade-off enables Gantt's dramatically faster incremental builds.
+### Incremental Builds (1 file changed)
+
+| Build Tool | Time | vs Ant+javac |
+|------------|------|--------------|
+| Apache Ant + javac | ~690ms | baseline |
+| Gantt + javac | ~420ms | **1.6x faster** |
+| **Gantt + Genesis** | **~100ms** | **7x faster** |
+
+Even when recompiling a single changed file, Ant + javac spends most of its time on JVM startup. Gantt + Genesis completes the entire cycle in ~100ms.
+
+### No-op Builds (nothing changed)
+
+| Build Tool | Time | vs Ant+javac |
+|------------|------|--------------|
+| Apache Ant + javac | ~620ms | baseline |
+| Gantt + javac | ~60ms | **10x faster** |
+| Gantt + Genesis | ~80ms | **8x faster** |
+
+When no files have changed, Gantt's C-based timestamp checking completes almost instantly, avoiding JVM startup entirely.
 
 ## Requirements
 
@@ -210,6 +220,21 @@ gantt -verbose
 # Set properties from command line
 gantt -Dproperty=value target
 ```
+
+### Custom Java Compiler
+
+To use an alternative Java compiler (e.g., [Genesis](https://github.com/cpkb-bluezoo/genesis)), set the `JAVAC` environment variable:
+
+```bash
+export JAVAC=/path/to/genesis
+gantt compile
+```
+
+The lookup order for the Java compiler is:
+1. `executable` attribute on the `<javac>` task
+2. `build.compiler` project property
+3. `JAVAC` environment variable
+4. `javac` in PATH
 
 ## Project Structure
 

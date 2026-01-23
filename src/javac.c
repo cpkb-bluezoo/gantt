@@ -286,7 +286,8 @@ bool javac_invoke(task_t *task, project_t *project)
     listfiles = parse_boolean(hashtable_lookup(task->attribute_dict, "listfiles"), false);
     includeDestClasses = parse_boolean(hashtable_lookup(task->attribute_dict, "includeDestClasses"), true);
     
-    /* Get executable - check 'executable' attribute first, then build.compiler property */
+    /* Get executable - check 'executable' attribute first, then build.compiler property,
+     * then JAVAC environment variable, then fall back to 'javac' in PATH */
     executable = hashtable_lookup(task->attribute_dict, "executable");
     if (executable) {
         executable = resolve_variables(strdup(executable), project);
@@ -307,13 +308,22 @@ bool javac_invoke(task_t *task, project_t *project)
         compiler = hashtable_lookup(project->property_dict, "build.compiler");
         if (!compiler || strcmp(compiler, "modern") == 0 || strcmp(compiler, "javac1.8") == 0 ||
             strcmp(compiler, "javac1.9") == 0 || strcmp(compiler, "javac10+") == 0) {
-            /* "modern" and versioned compilers all map to the standard javac */
-            compiler = JAVAC;
+            /* Check JAVAC environment variable */
+            compiler = getenv("JAVAC");
+            if (!compiler) {
+                compiler = JAVAC;
+            }
         }
+        /* Try to find in PATH first */
         executable = find_executable(compiler);
         if (!executable) {
-            fprintf(stderr, "%s: compiler command not found\n", compiler);
-            return !failonerror;
+            /* Try as absolute path */
+            if (file_is_executable(compiler)) {
+                executable = strdup(compiler);
+            } else {
+                fprintf(stderr, "%s: compiler command not found\n", compiler);
+                return !failonerror;
+            }
         }
     }
     
