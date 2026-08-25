@@ -263,6 +263,41 @@ char *xml_node_get_text(xml_node_t *node)
 }
 
 /* ========================================================================
+ * Namespace normalization
+ * ======================================================================== */
+
+/* The only namespace URI gantt currently recognises: Apache Ivy's antlib. */
+#define IVY_ANTLIB_URI "antlib:org.apache.ivy.ant"
+
+char *xml_ns_normalize(const char *raw_name)
+{
+    const char *sep;
+    const char *local;
+    size_t uri_len;
+
+    if (!raw_name) {
+        return NULL;
+    }
+
+    sep = strchr(raw_name, XML_NS_SEP);
+    if (!sep) {
+        /* No active namespace on this element - pass through unchanged. */
+        return strdup(raw_name);
+    }
+
+    local = sep + 1;
+    uri_len = (size_t)(sep - raw_name);
+
+    if (uri_len == strlen(IVY_ANTLIB_URI) &&
+        strncmp(raw_name, IVY_ANTLIB_URI, uri_len) == 0) {
+        return str_concat("ivy:", local, NULL);
+    }
+
+    fprintf(stderr, "Warning: element <%s> uses an unrecognised XML namespace\n", local);
+    return strdup(local);
+}
+
+/* ========================================================================
  * DOM-style parsing implementation (builds tree in memory)
  * ======================================================================== */
 
@@ -284,8 +319,10 @@ static void XMLCALL dom_start_element(void *user_data,
                                        const char **attrs)
 {
     dom_parse_context_t *ctx = user_data;
-    
-    xml_node_t *node = xml_node_new(name);
+    char *normalized_name = xml_ns_normalize(name);
+
+    xml_node_t *node = xml_node_new(normalized_name);
+    free(normalized_name);
     if (!node) {
         return;
     }
@@ -372,7 +409,7 @@ xml_doc_t *xml_parse_file(const char *filename)
     };
     
     /* Create parser */
-    XML_Parser parser = XML_ParserCreate(NULL);
+    XML_Parser parser = XML_ParserCreateNS(NULL, XML_NS_SEP);
     if (!parser) {
         free(contents);
         free(doc->filename);
@@ -450,7 +487,9 @@ static void XMLCALL sax_start_element(void *data,
 {
     sax_parse_context_t *ctx = data;
     if (ctx->handler && ctx->handler->start_element) {
-        ctx->handler->start_element(ctx->user_data, name, attrs);
+        char *normalized_name = xml_ns_normalize(name);
+        ctx->handler->start_element(ctx->user_data, normalized_name, attrs);
+        free(normalized_name);
     }
 }
 
@@ -510,7 +549,7 @@ bool xml_sax_parse_file(const char *filename,
     };
     
     /* Create parser */
-    XML_Parser parser = XML_ParserCreate(NULL);
+    XML_Parser parser = XML_ParserCreateNS(NULL, XML_NS_SEP);
     if (!parser) {
         free(contents);
         return false;

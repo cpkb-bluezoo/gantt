@@ -27,6 +27,26 @@
 #include "util.h"
 #include <expat.h>
 
+/*
+ * Separator character passed to XML_ParserCreateNS. Namespace-qualified
+ * element names arrive as "<uri><XML_NS_SEP><localname>"; unqualified
+ * elements (the vast majority - nothing in build.xml uses namespaces) pass
+ * through unchanged. Chosen to be a byte that can't appear in a URI or
+ * element name.
+ */
+#define XML_NS_SEP '\x01'
+
+/*
+ * Collapse a (possibly namespace-qualified) element name from expat into
+ * gantt's dispatch form. Unqualified names pass through unchanged. Names
+ * qualified with a namespace URI gantt recognises are rewritten to a
+ * canonical "prefix:localname" form regardless of the prefix (or absence of
+ * one) the build file actually used. Names in an unrecognised namespace
+ * collapse to just the local name, with a warning.
+ * Caller must free the result.
+ */
+char *xml_ns_normalize(const char *raw_name);
+
 /* ========================================================================
  * XML Attribute helper
  * ======================================================================== */

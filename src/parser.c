@@ -630,17 +630,20 @@ static void handle_task_child_start(parse_context_t *ctx, const char *name, cons
 static void XMLCALL start_element(void *user_data, const char *name, const char **attrs)
 {
     parse_context_t *ctx = user_data;
-    
+
     if (ctx->error) {
         return;
     }
-    
+
     /* Handle skip state */
     if (ctx->state == PARSE_SKIP) {
         ctx->skip_depth++;
         return;
     }
-    
+
+    char *normalized_name = xml_ns_normalize(name);
+    name = normalized_name;
+
     switch (ctx->state) {
     case PARSE_ROOT:
         if (xml_streq(name, "project")) {
@@ -780,6 +783,8 @@ static void XMLCALL start_element(void *user_data, const char *name, const char 
         ctx->skip_depth++;
         break;
     }
+
+    free(normalized_name);
 }
 
 static void XMLCALL end_element(void *user_data, const char *name)
@@ -1244,7 +1249,7 @@ project_t *parse_project(const char *filename, slist_t *cmd_props)
     };
     
     /* Create parser */
-    XML_Parser parser = XML_ParserCreate(NULL);
+    XML_Parser parser = XML_ParserCreateNS(NULL, XML_NS_SEP);
     if (!parser) {
         free(contents);
         free(ctx.filename);
