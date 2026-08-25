@@ -1,4 +1,0 @@
-Hello World!
-Welcome to Gantt.
-Your version is 1.0.
-Today is 2026-01-02.
