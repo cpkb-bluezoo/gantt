@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ivy-test" default="test" basedir="."
+         xmlns:ivy="antlib:org.apache.ivy.ant">
+
+    <description>
+        Tests ivy:resolve and ivy:retrieve against a local, offline fixture
+        repository: a plain m2compatible POM dependency, a transitive
+        dependency pulled in via a POM, a version conflict across two
+        paths, and a real ivy.xml module descriptor via a non-m2compatible
+        resolver.
+    </description>
+
+    <property name="build.dir" value="${basedir}/build"/>
+
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+    </target>
+
+    <target name="test-resolve" depends="init">
+        <echo message="Testing ivy:resolve..."/>
+        <ivy:resolve file="ivy.xml" settingsfile="ivysettings.xml"/>
+    </target>
+
+    <target name="test-retrieve" depends="test-resolve">
+        <echo message="Testing ivy:retrieve..."/>
+        <ivy:retrieve file="ivy.xml" settingsfile="ivysettings.xml"
+                      pattern="${build.dir}/lib/[conf]/[artifact]-[revision].[ext]"/>
+    </target>
+
+    <!-- xmlns:x here (declared on this target, not the project root, and
+         using a different prefix entirely) exercises the namespace-aware
+         dispatch added for these tasks: gantt must recognise <x:retrieve>
+         via the antlib:org.apache.ivy.ant URI, not the literal "ivy:"
+         string. -->
+    <target name="test-alt-prefix" depends="test-retrieve" xmlns:x="antlib:org.apache.ivy.ant">
+        <echo message="Testing an alternate Ivy namespace prefix..."/>
+        <x:retrieve file="ivy.xml" settingsfile="ivysettings.xml"
+                    pattern="${build.dir}/lib-alt/[conf]/[artifact]-[revision].[ext]"/>
+    </target>
+
+    <target name="test" depends="test-alt-prefix">
+        <echo message=""/>
+        <echo message="=== Ivy Tests Complete ==="/>
+    </target>
+
+</project>

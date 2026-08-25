@@ -1,0 +1,21 @@
+<ivysettings>
+  <caches defaultCacheDir="${basedir}/build/cache"/>
+  <resolvers>
+    <!-- m2compatible: standard Maven2 layout, module descriptors come from
+         the POM found at the artifact location, not a native ivy.xml. -->
+    <filesystem name="m2repo" m2compatible="true" root="${basedir}/repo"/>
+
+    <!-- Classic (non-m2) layout: a real ivy.xml module descriptor, found
+         via its own dedicated pattern. -->
+    <filesystem name="nativerepo" m2compatible="false" root="${basedir}/repo">
+      <ivy pattern="[organisation]/[module]/ivys/ivy-[revision].xml"/>
+      <artifact pattern="[organisation]/[module]/jars/[artifact]-[revision].[ext]"/>
+    </filesystem>
+
+    <chain name="testchain">
+      <resolver ref="m2repo"/>
+      <resolver ref="nativerepo"/>
+    </chain>
+  </resolvers>
+  <settings defaultResolver="testchain"/>
+</ivysettings>

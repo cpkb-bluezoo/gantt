@@ -1,0 +1,17 @@
+<ivy-module version="2.0">
+  <info organisation="test" module="app" revision="1.0"/>
+  <configurations>
+    <conf name="default"/>
+  </configurations>
+  <dependencies>
+    <!-- (a) plain m2compatible POM-only dependency, no transitive deps -->
+    <dependency org="com.example" name="libA" rev="1.0"/>
+    <!-- (b) transitive dependency pulled in via libB's own POM (-> libA 1.0) -->
+    <dependency org="com.example" name="libB" rev="1.0"/>
+    <!-- (c) version conflict: two paths to libA at different revisions -->
+    <dependency org="com.example" name="libC" rev="1.0"/>
+    <dependency org="com.example" name="libD" rev="2.0"/>
+    <!-- (d) real ivy.xml descriptor via a non-m2compatible resolver -->
+    <dependency org="org.example" name="nativemod" rev="1.0"/>
+  </dependencies>
+</ivy-module>
