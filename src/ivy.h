@@ -168,6 +168,30 @@ typedef struct ivy_resolution {
 void ivy_resolution_free(ivy_resolution_t *resolution);
 
 /* ========================================================================
+ * Resolution engine (ivy_resolve.c)
+ * ======================================================================== */
+
+/*
+ * Resolves ivy_file's dependencies (transitively) against settings_file
+ * (or, if NULL, the zero-config default - see ivy_settings_default()),
+ * restricted to conf_filter (a comma-separated list of configuration
+ * names, or NULL/"*" for all configurations declared in ivy_file).
+ *
+ * On success, *out_resolution is a newly allocated ivy_resolution_t (caller
+ * frees with ivy_resolution_free()) and this returns true. On failure (bad
+ * settings, bad ivy.xml, or the root descriptor simply couldn't be parsed),
+ * returns false and *out_resolution is untouched.
+ *
+ * Individual unresolvable dependencies are logged as warnings via `task`
+ * (which may be NULL to suppress logging) and skipped rather than failing
+ * the whole run - task_t here is used purely for task_log(), not as a
+ * dispatch target.
+ */
+bool ivy_resolve_run(project_t *project, task_t *task,
+                      const char *ivy_file, const char *settings_file,
+                      const char *conf_filter, ivy_resolution_t **out_resolution);
+
+/* ========================================================================
  * Pattern substitution
  * ======================================================================== */
 

@@ -69,6 +69,7 @@ SOURCES = \
     fail.c \
     native2ascii.c \
     ivy_parse.c \
+    ivy_resolve.c \
     parser.c \
     gantt.c
 
