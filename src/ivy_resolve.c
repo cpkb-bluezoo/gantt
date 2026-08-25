@@ -617,3 +617,83 @@ bool ivy_resolve_run(project_t *project, task_t *task,
     *out_resolution = resolution;
     return true;
 }
+
+/* ========================================================================
+ * ivy:resolve task
+ * ======================================================================== */
+
+/* Resolves settingsfile discovery shared by ivy:resolve/ivy:retrieve:
+ * an explicit attribute always wins; otherwise ${basedir}/ivysettings.xml
+ * is used if it exists, else NULL (zero-config default, see
+ * ivy_settings_default()). Caller frees the result. */
+static char *discover_settings_file(task_t *task, project_t *project)
+{
+    const char *attr = hashtable_lookup(task->attribute_dict, "settingsfile");
+    char *settings_file;
+
+    if (attr) {
+        settings_file = resolve_variables(strdup(attr), project);
+        return expand_location(project, settings_file);
+    }
+
+    settings_file = expand_location(project, strdup("ivysettings.xml"));
+    if (file_exists(settings_file)) {
+        return settings_file;
+    }
+    free(settings_file);
+    return NULL;
+}
+
+bool ivy_resolve_invoke(task_t *task, project_t *project)
+{
+    const char *file_attr;
+    const char *conf_attr;
+    char *file;
+    char *settings_file;
+    char *conf;
+    bool failonerror;
+    bool ret;
+    ivy_resolution_t *resolution = NULL;
+
+    file_attr = hashtable_lookup(task->attribute_dict, "file");
+    file = resolve_variables(strdup(file_attr ? file_attr : "ivy.xml"), project);
+    file = expand_location(project, file);
+
+    settings_file = discover_settings_file(task, project);
+
+    conf_attr = hashtable_lookup(task->attribute_dict, "conf");
+    conf = conf_attr ? resolve_variables(strdup(conf_attr), project) : NULL;
+
+    failonerror = parse_boolean(hashtable_lookup(task->attribute_dict, "failonerror"), true);
+
+    if (!file_exists(file)) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "ivy file not found: %s", file);
+        task_log(task, LOG_ERROR, msg);
+        free(file);
+        free(settings_file);
+        free(conf);
+        return !failonerror;
+    }
+
+    ret = ivy_resolve_run(project, task, file, settings_file, conf, &resolution);
+
+    if (ret && resolution) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "resolved %zu module(s)", resolution->modules->count);
+        task_log(task, LOG_INFO, msg);
+    } else if (!ret) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "resolve of %s failed", file);
+        task_log(task, LOG_ERROR, msg);
+    }
+
+    if (resolution) {
+        ivy_resolution_free(resolution);
+    }
+    free(file);
+    free(settings_file);
+    free(conf);
+
+    return ret || !failonerror;
+}
