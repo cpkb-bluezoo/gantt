@@ -266,8 +266,18 @@ char *xml_node_get_text(xml_node_t *node)
  * Namespace normalization
  * ======================================================================== */
 
-/* The only namespace URI gantt currently recognises: Apache Ivy's antlib. */
+/* Namespace URIs gantt currently recognises. */
 #define IVY_ANTLIB_URI "antlib:org.apache.ivy.ant"
+/*
+ * Maven POM files (fetched from repositories as ivy.xml's m2compatible
+ * fallback) declare this as their default xmlns, which namespace-qualifies
+ * every element in the file. Recognised here so ivy_pom_parse_file() (see
+ * ivy_parse.c) can match plain local names ("project", "dependency", ...)
+ * without every element triggering the "unrecognised namespace" warning
+ * below - this isn't a dispatch prefix like ivy: above, just a name a POM
+ * parser needs to see in its bare form.
+ */
+#define MAVEN_POM_URI "http://maven.apache.org/POM/4.0.0"
 
 char *xml_ns_normalize(const char *raw_name)
 {
@@ -291,6 +301,11 @@ char *xml_ns_normalize(const char *raw_name)
     if (uri_len == strlen(IVY_ANTLIB_URI) &&
         strncmp(raw_name, IVY_ANTLIB_URI, uri_len) == 0) {
         return str_concat("ivy:", local, NULL);
+    }
+
+    if (uri_len == strlen(MAVEN_POM_URI) &&
+        strncmp(raw_name, MAVEN_POM_URI, uri_len) == 0) {
+        return strdup(local);
     }
 
     fprintf(stderr, "Warning: element <%s> uses an unrecognised XML namespace\n", local);

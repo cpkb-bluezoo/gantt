@@ -68,6 +68,7 @@ SOURCES = \
     tstamp.c \
     fail.c \
     native2ascii.c \
+    ivy_parse.c \
     parser.c \
     gantt.c
 
