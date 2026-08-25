@@ -697,3 +697,190 @@ bool ivy_resolve_invoke(task_t *task, project_t *project)
 
     return ret || !failonerror;
 }
+
+/* ========================================================================
+ * ivy:retrieve task
+ * ======================================================================== */
+
+/* Small self-contained copy loop - fileops.c's copy_file() is `static`
+ * inside a standalone multi-main() binary (see the Makefile's per-DTASK_*
+ * builds) and isn't linkable from here. Creates any missing parent
+ * directories first. */
+static bool copy_file_to(const char *src, const char *dest)
+{
+    char *dest_copy;
+    char *last_sep;
+    FILE *in;
+    FILE *out;
+    char buf[8192];
+    size_t n;
+    bool ok = true;
+
+    dest_copy = strdup(dest);
+    last_sep = strrchr(dest_copy, DIR_SEPARATOR);
+    if (last_sep) {
+        *last_sep = '\0';
+        if (*dest_copy && !file_is_directory(dest_copy)) {
+            char *mkdir_argv[] = {"mkdir", "-p", dest_copy, NULL};
+            spawn_sync(NULL, mkdir_argv, NULL, NULL);
+        }
+    }
+    free(dest_copy);
+
+    in = fopen(src, "rb");
+    if (!in) {
+        return false;
+    }
+    out = fopen(dest, "wb");
+    if (!out) {
+        fclose(in);
+        return false;
+    }
+
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) {
+            ok = false;
+            break;
+        }
+    }
+
+    fclose(in);
+    fclose(out);
+    return ok;
+}
+
+typedef struct retrieve_ctx {
+    project_t *project;
+    task_t *task;
+    const char *pattern;
+    int count;
+} retrieve_ctx_t;
+
+/* Writes one copy of each of a resolved module's artifacts per
+ * configuration it belongs to (in v1 every resolved module belongs to the
+ * full requested-conf set - see the "v1 doesn't track precise per-module
+ * conf provenance" note in finalize_winner). An existing destination is
+ * left alone rather than re-copied - dest paths are revision-qualified by
+ * construction, so an existing file there is already the right content,
+ * the same reasoning that makes the cache itself skip re-fetching. */
+static void retrieve_module_cb(const char *key, void *value, void *user_data)
+{
+    retrieve_ctx_t *rctx = user_data;
+    ivy_resolved_module_t *rm = value;
+    slist_t *conf_ptr;
+
+    (void)key;
+
+    for (conf_ptr = rm->confs; conf_ptr; conf_ptr = slist_next(conf_ptr)) {
+        const char *conf_name = conf_ptr->data;
+        slist_t *art_ptr;
+
+        for (art_ptr = rm->artifacts; art_ptr; art_ptr = slist_next(art_ptr)) {
+            ivy_artifact_t *art = art_ptr->data;
+            ivy_pattern_tokens_t tok = {0};
+            char *dest;
+
+            tok.organisation = rm->id.organisation;
+            tok.module = rm->id.name;
+            tok.revision = rm->id.revision;
+            tok.artifact = rm->id.name;
+            tok.type = art->type;
+            tok.ext = art->ext;
+            tok.conf = conf_name;
+
+            dest = ivy_pattern_substitute(rctx->pattern, &tok);
+            dest = expand_location(rctx->project, dest);
+
+            if (file_exists(dest)) {
+                rctx->count++;
+            } else if (copy_file_to(art->cached_path, dest)) {
+                rctx->count++;
+            } else if (rctx->task) {
+                char msg[512];
+                snprintf(msg, sizeof(msg), "unable to retrieve %s to %s",
+                         art->cached_path, dest);
+                task_log(rctx->task, LOG_WARNING, msg);
+            }
+
+            free(dest);
+        }
+    }
+}
+
+bool ivy_retrieve_invoke(task_t *task, project_t *project)
+{
+    const char *file_attr;
+    const char *conf_attr;
+    const char *pattern_attr;
+    char *file;
+    char *settings_file;
+    char *conf;
+    char *pattern;
+    bool failonerror;
+    bool ret;
+    ivy_resolution_t *resolution = NULL;
+
+    file_attr = hashtable_lookup(task->attribute_dict, "file");
+    file = resolve_variables(strdup(file_attr ? file_attr : "ivy.xml"), project);
+    file = expand_location(project, file);
+
+    settings_file = discover_settings_file(task, project);
+
+    conf_attr = hashtable_lookup(task->attribute_dict, "conf");
+    conf = conf_attr ? resolve_variables(strdup(conf_attr), project) : NULL;
+
+    pattern_attr = hashtable_lookup(task->attribute_dict, "pattern");
+    pattern = resolve_variables(
+        strdup(pattern_attr ? pattern_attr
+                             : "[organisation]/[module]/[conf]/[artifact]-[revision].[ext]"),
+        project);
+
+    if (parse_boolean(hashtable_lookup(task->attribute_dict, "sync"), false)) {
+        task_log(task, LOG_WARNING,
+                 "sync=\"true\" is not yet supported - stale files from a previous "
+                 "retrieve will not be removed, proceeding as a plain copy");
+    }
+
+    failonerror = parse_boolean(hashtable_lookup(task->attribute_dict, "failonerror"), true);
+
+    if (!file_exists(file)) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "ivy file not found: %s", file);
+        task_log(task, LOG_ERROR, msg);
+        free(file);
+        free(settings_file);
+        free(conf);
+        free(pattern);
+        return !failonerror;
+    }
+
+    ret = ivy_resolve_run(project, task, file, settings_file, conf, &resolution);
+
+    if (ret && resolution) {
+        retrieve_ctx_t rctx;
+        char msg[128];
+
+        rctx.project = project;
+        rctx.task = task;
+        rctx.pattern = pattern;
+        rctx.count = 0;
+        hashtable_foreach(resolution->modules, retrieve_module_cb, &rctx);
+
+        snprintf(msg, sizeof(msg), "retrieved %d file(s)", rctx.count);
+        task_log(task, LOG_INFO, msg);
+    } else if (!ret) {
+        char msg[512];
+        snprintf(msg, sizeof(msg), "resolve of %s failed", file);
+        task_log(task, LOG_ERROR, msg);
+    }
+
+    if (resolution) {
+        ivy_resolution_free(resolution);
+    }
+    free(file);
+    free(settings_file);
+    free(conf);
+    free(pattern);
+
+    return ret || !failonerror;
+}

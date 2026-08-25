@@ -630,6 +630,7 @@ bool task_invoke(task_t *task, project_t *project)
         hashtable_insert(invoke_dict, "local", local_invoke);
         hashtable_insert(invoke_dict, "native2ascii", native2ascii_invoke);
         hashtable_insert(invoke_dict, "ivy:resolve", ivy_resolve_invoke);
+        hashtable_insert(invoke_dict, "ivy:retrieve", ivy_retrieve_invoke);
     }
     
     f = (task_invoke_fn)hashtable_lookup(invoke_dict, task->name);
