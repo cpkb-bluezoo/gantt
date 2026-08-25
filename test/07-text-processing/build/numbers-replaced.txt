@@ -1,3 +1,0 @@
-Line 1: foo123bar
-Line 2: abc456def
-Line 3: test789end
