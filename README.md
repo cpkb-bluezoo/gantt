@@ -322,6 +322,6 @@ GNU General Public License v2.0 or later.
 
 ## Author
 
-Chris Burdess <dog@bluezoo.org>
+Chris Burdess <dog@gnu.org>
 
 Originally written in February 2005. Refactored in 2026 to remove GLib and libxml2 dependencies.
