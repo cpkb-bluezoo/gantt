@@ -398,6 +398,17 @@ static void configuration_free(void *p)
     free(conf);
 }
 
+void ivy_license_free(void *p)
+{
+    ivy_license_t *lic = p;
+    if (!lic) {
+        return;
+    }
+    free(lic->name);
+    free(lic->url);
+    free(lic);
+}
+
 void ivy_module_descriptor_free(ivy_module_descriptor_t *md)
 {
     if (!md) {
@@ -407,6 +418,9 @@ void ivy_module_descriptor_free(ivy_module_descriptor_t *md)
     free(md->status);
     slist_free_full(md->configurations, configuration_free);
     slist_free_full(md->dependencies, dependency_free);
+    slist_free_full(md->licenses, ivy_license_free);
+    free(md->homepage);
+    free(md->pubdate);
     free(md);
 }
 
@@ -460,10 +474,33 @@ ivy_module_descriptor_t *ivy_descriptor_parse_file(const char *filename)
             const char *name = xml_node_get_attr(cur, "module");
             const char *rev = xml_node_get_attr(cur, "revision");
             const char *status = xml_node_get_attr(cur, "status");
+            const char *homepage = xml_node_get_attr(cur, "homepage");
+            const char *pubdate = xml_node_get_attr(cur, "pubdate");
+            xml_node_t *lnode;
+            slist_t *lic_tail = NULL;
+
             ivy_module_id_init(&md->id, org, name, rev);
             if (status) {
                 free(md->status);
                 md->status = strdup(status);
+            }
+            md->homepage = homepage ? strdup(homepage) : NULL;
+            md->pubdate = pubdate ? strdup(pubdate) : NULL;
+
+            for (lnode = cur->children; lnode; lnode = lnode->next) {
+                ivy_license_t *lic;
+                if (!xml_streq(lnode->name, "license")) {
+                    continue;
+                }
+                lic = calloc(1, sizeof(ivy_license_t));
+                lic->name = xml_node_get_attr_dup(lnode, "name");
+                lic->url = xml_node_get_attr_dup(lnode, "url");
+                if (!lic_tail) {
+                    md->licenses = slist_new(lic);
+                    lic_tail = md->licenses;
+                } else {
+                    lic_tail = slist_append(lic_tail, lic);
+                }
             }
         } else if (xml_streq(cur->name, "configurations")) {
             xml_node_t *cnode;
@@ -645,8 +682,35 @@ ivy_module_descriptor_t *ivy_pom_parse_file(const char *filename,
                     hashtable_insert(props, p->name, val);
                 }
             }
+        } else if (xml_streq(cur->name, "url")) {
+            md->homepage = xml_node_get_text(cur);
+        } else if (xml_streq(cur->name, "licenses")) {
+            xml_node_t *lnode;
+            slist_t *lic_tail = NULL;
+            for (lnode = cur->children; lnode; lnode = lnode->next) {
+                ivy_license_t *lic;
+                xml_node_t *f;
+                if (!xml_streq(lnode->name, "license")) {
+                    continue;
+                }
+                lic = calloc(1, sizeof(ivy_license_t));
+                for (f = lnode->children; f; f = f->next) {
+                    if (xml_streq(f->name, "name")) {
+                        lic->name = xml_node_get_text(f);
+                    } else if (xml_streq(f->name, "url")) {
+                        lic->url = xml_node_get_text(f);
+                    }
+                }
+                if (!lic_tail) {
+                    md->licenses = slist_new(lic);
+                    lic_tail = md->licenses;
+                } else {
+                    lic_tail = slist_append(lic_tail, lic);
+                }
+            }
         }
     }
+    /* No POM equivalent for pubdate - md->pubdate stays NULL (calloc'd). */
 
     ivy_module_id_init(&md->id,
                         group_id ? group_id : requested_id->organisation,
@@ -1065,24 +1129,53 @@ static void artifact_free(void *p)
     free(a);
 }
 
-static void resolved_module_free(void *p)
+static void caller_free(void *p)
 {
-    ivy_resolved_module_t *m = p;
-    if (!m) {
+    ivy_caller_t *c = p;
+    if (!c) {
         return;
     }
-    ivy_module_id_clear(&m->id);
-    ivy_module_descriptor_free(m->descriptor);
-    slist_free_full(m->artifacts, artifact_free);
-    slist_free_full(m->confs, free);
-    free(m);
+    ivy_module_id_clear(&c->id);
+    free(c->conf);
+    free(c);
 }
 
-static void resolved_module_free_ht(const char *key, void *value, void *user_data)
+static void revision_report_free(void *p)
+{
+    ivy_revision_report_t *rr = p;
+    if (!rr) {
+        return;
+    }
+    free(rr->revision);
+    free(rr->status);
+    free(rr->resolver_name);
+    free(rr->pubdate);
+    free(rr->homepage);
+    free(rr->evicted_by_rev);
+    free(rr->error);
+    slist_free_full(rr->callers, caller_free);
+    slist_free_full(rr->artifacts, artifact_free);
+    slist_free_full(rr->licenses, ivy_license_free);
+    slist_free_full(rr->confs, free);
+    free(rr);
+}
+
+static void module_report_free(void *p)
+{
+    ivy_module_report_t *mr = p;
+    if (!mr) {
+        return;
+    }
+    ivy_module_id_clear(&mr->id);
+    slist_free_full(mr->revisions, revision_report_free);
+    free(mr);
+}
+
+static void module_report_free_ht(const char *key, void *value, void *user_data)
 {
     (void)key;
     (void)user_data;
-    resolved_module_free(value);
+    module_report_free(value);
 }
 
 void ivy_resolution_free(ivy_resolution_t *resolution)
@@ -1090,8 +1183,22 @@ void ivy_resolution_free(ivy_resolution_t *resolution)
     if (!resolution) {
         return;
     }
-    hashtable_foreach(resolution->modules, resolved_module_free_ht, NULL);
+    hashtable_foreach(resolution->modules, module_report_free_ht, NULL);
     hashtable_free(resolution->modules);
     slist_free_full(resolution->conf_names, free);
+    free(resolution->cache_dir);
+    ivy_module_id_clear(&resolution->root_id);
     free(resolution);
+}
+
+ivy_revision_report_t *ivy_module_report_find_default(ivy_module_report_t *mr)
+{
+    slist_t *p;
+    for (p = mr->revisions; p; p = slist_next(p)) {
+        ivy_revision_report_t *rr = p->data;
+        if (rr->is_default) {
+            return rr;
+        }
+    }
+    return NULL;
 }

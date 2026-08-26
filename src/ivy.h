@@ -75,12 +75,23 @@ typedef struct ivy_configuration {
     char *visibility;       /* "public" / "private", default "public" */
 } ivy_configuration_t;
 
+typedef struct ivy_license {
+    char *name;
+    char *url;
+} ivy_license_t;
+
+/* slist_free_full callback; also reusable for a deep-copied license list. */
+void ivy_license_free(void *p);
+
 typedef struct ivy_module_descriptor {
     ivy_module_id_t id;
     char *status;                  /* default "release" */
     slist_t *configurations;       /* slist of ivy_configuration_t* */
     slist_t *dependencies;         /* slist of ivy_dependency_t* */
     bool from_pom;                  /* true if synthesized via POM fallback */
+    slist_t *licenses;               /* slist of ivy_license_t*, zero or more */
+    char *homepage;                   /* ivy.xml <info homepage=".."> or POM <url> */
+    char *pubdate;                      /* ivy.xml <info pubdate=".."> only; NULL for from_pom */
 } ivy_module_descriptor_t;
 
 /* Parses a real ivy.xml module descriptor file. Returns NULL on error. */
@@ -153,19 +164,83 @@ typedef struct ivy_artifact {
     char *cached_path;        /* absolute path under settings->cache_dir */
 } ivy_artifact_t;
 
-typedef struct ivy_resolved_module {
-    ivy_module_id_t id;
-    ivy_module_descriptor_t *descriptor;
-    slist_t *artifacts;    /* slist of ivy_artifact_t*, winners only */
-    slist_t *confs;          /* slist of char*, confs that pulled this module in */
-} ivy_resolved_module_t;
+/*
+ * One edge in the dependency graph: which module (and its own resolved
+ * revision) declared a dependency that reached a given ivy_revision_report_t.
+ */
+typedef struct ivy_caller {
+    ivy_module_id_t id;   /* organisation/name = the calling module; revision =
+                            * the caller's own resolved revision (real Ivy's
+                            * "callerrev"). For edges declared directly by the
+                            * root ivy.xml, this is ivy_resolution_t.root_id. */
+    char *conf;             /* comma-joined subset of the requested confs this
+                              * edge actually maps into (see
+                              * ivy_resolve_run()'s conf_mapping_matching_confs) */
+} ivy_caller_t;
+
+/*
+ * One distinct revision of a module encountered anywhere in the graph -
+ * winners and evicted losers alike, plus a single error entry for a
+ * dependency that could not be resolved by any configured resolver.
+ */
+typedef struct ivy_revision_report {
+    char *revision;
+    char *status;               /* NULL for an error entry */
+    char *resolver_name;          /* NULL if this revision was never found */
+    char *pubdate;                  /* copied from the descriptor, may be NULL */
+    char *homepage;                   /* copied from the descriptor, may be NULL */
+    bool evicted;
+    char *evicted_by_rev;               /* non-NULL iff evicted is true */
+    bool is_default;                      /* the conflict-resolution winner */
+    char *error;                            /* non-NULL only if this exact
+                                              * organisation:name:revision could
+                                              * never be found */
+    bool downloaded;                          /* true only if the winning
+                                                * artifact was freshly fetched
+                                                * (not a cache hit) this run */
+    slist_t *callers;                           /* slist of ivy_caller_t* */
+    slist_t *artifacts;                           /* slist of ivy_artifact_t*;
+                                                    * populated only when
+                                                    * is_default && !error */
+    slist_t *licenses;                              /* slist of ivy_license_t*,
+                                                       * deep-copied out of the
+                                                       * descriptor (which is
+                                                       * freed once resolution
+                                                       * finishes) */
+    slist_t *confs;                                   /* slist of char*, deduped
+                                                         * union of this revision's
+                                                         * callers' matching confs */
+} ivy_revision_report_t;
+
+/* All distinct revisions ever encountered for one organisation:name. */
+typedef struct ivy_module_report {
+    ivy_module_id_t id;   /* organisation/name stable once created; revision is
+                            * the current best successfully-resolved revision,
+                            * updated in place as the walk proceeds via
+                            * ivy_compare_revisions(), and stays NULL if every
+                            * attempt at this organisation:name errored (no
+                            * revision in `revisions` is ever is_default) */
+    slist_t *revisions;    /* slist of ivy_revision_report_t*, discovery order */
+} ivy_module_report_t;
 
 typedef struct ivy_resolution {
-    hashtable_t *modules;     /* "organisation:name" -> ivy_resolved_module_t* */
+    hashtable_t *modules;     /* "organisation:name" -> ivy_module_report_t* */
     slist_t *conf_names;       /* requested confs for this run */
+    char *cache_dir;             /* copied from ivy_settings_t.cache_dir before
+                                   * ivy_resolve_run() frees the settings -
+                                   * needed by ivy:cachefileset for a scoped
+                                   * fileset directory */
+    ivy_module_id_t root_id;      /* the resolved ivy.xml's own organisation/
+                                    * module/revision, needed by ivy:report's
+                                    * <info> element */
 } ivy_resolution_t;
 
 void ivy_resolution_free(ivy_resolution_t *resolution);
+
+/* Returns the conflict-resolution winner among mr->revisions, or NULL if
+ * every attempt at this module errored (no winner exists). Shared by
+ * ivy:retrieve and the ivy:cachepath/ivy:cachefileset/ivy:report tasks. */
+ivy_revision_report_t *ivy_module_report_find_default(ivy_module_report_t *mr);
 
 /* ========================================================================
  * Resolution engine (ivy_resolve.c)

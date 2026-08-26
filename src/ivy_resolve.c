@@ -22,9 +22,11 @@
 /*
  * The resolution engine: resolver-chain traversal, cache fetch/hit, the
  * transitive dependency walk (cycle guard, exclude filtering, "latest
- * revision wins" conflict resolution), and the ivy:resolve / ivy:retrieve
- * task entry points (added in a later commit - this one only adds
- * ivy_resolve_run(), not wired to any task yet).
+ * revision wins" conflict resolution, caller/eviction tracking for
+ * ivy:report), and the ivy:resolve / ivy:retrieve task entry points.
+ * ivy:cachepath/ivy:cachefileset/ivy:report live in separate files but
+ * share ivy_resolve_run() as their only entry point into this engine -
+ * every ivy:* task is stateless (see ivy_resolve_run()'s own doc comment).
  */
 
 #include "ivy.h"
@@ -32,84 +34,95 @@
 /* ========================================================================
  * Descriptor cache: every module descriptor fetched during a walk is
  * memoized here by "org:name:rev", regardless of whether it turns out to
- * be a conflict-resolution winner or loser - a losing revision's own
- * transitive dependencies still had to be fetched and parsed to explore
- * the graph. Winners have their descriptor's ownership transferred out to
- * the corresponding ivy_resolved_module_t at the end of the walk (see
- * finalize_winners); whatever remains here afterwards (losers) is freed
- * as a batch.
+ * be a conflict-resolution winner or an evicted loser - a losing
+ * revision's own transitive dependencies still had to be fetched and
+ * parsed to explore the graph. finalize_revision() runs once per entry
+ * here (winners and losers alike) at the end of the walk, extracting the
+ * fields ivy_revision_report_t needs and freeing the descriptor uniformly.
  * ======================================================================== */
 
 typedef struct descriptor_cache_entry {
-    ivy_module_descriptor_t *descriptor;  /* owned until ownership transfers */
+    ivy_module_descriptor_t *descriptor;  /* owned until finalize_revision frees it */
     ivy_resolver_t *resolver;             /* non-owning: owned by settings->resolvers */
+    ivy_module_id_t id;                     /* the id this was fetched for */
 } descriptor_cache_entry_t;
-
-static void descriptor_cache_entry_free(void *p)
-{
-    descriptor_cache_entry_t *e = p;
-    if (!e) {
-        return;
-    }
-    ivy_module_descriptor_free(e->descriptor);
-    free(e);
-}
 
 typedef struct walk_ctx {
     ivy_settings_t *settings;
     hashtable_t *ancestor_path;      /* "org:name" -> non-NULL while on the current DFS stack (cycle guard) */
     hashtable_t *descriptor_cache;   /* "org:name:rev" -> descriptor_cache_entry_t* */
-    hashtable_t *winners;            /* "org:name" -> ivy_resolved_module_t* (== resolution->modules) */
+    hashtable_t *modules;             /* "org:name" -> ivy_module_report_t* (== resolution->modules) */
+    hashtable_t *revision_index;       /* "org:name:rev" -> ivy_revision_report_t*, non-owning */
     slist_t *requested_confs;        /* slist of char*, the confs being resolved */
     task_t *task;
     project_t *project;
 } walk_ctx_t;
 
 /* ========================================================================
- * Small helpers: conf-mapping and exclude matching
+ * Small helpers: conf-mapping, exclude matching, report bookkeeping
  * ======================================================================== */
 
 /*
- * v1 simplification (see plan): dependency conf mapping is checked as a
- * flat filter against the single top-level requested_confs list at every
- * level of the walk, not propagated/remapped per edge into a real
- * per-configuration dependency graph.
+ * Returns a newly allocated, comma-joined list of members of
+ * requested_confs that conf_mapping (raw "a->b;c->d" attribute, or NULL
+ * for the implicit "*->default") actually maps from, in requested_confs
+ * order. Returns NULL if none match (the dependency doesn't participate
+ * in any requested conf at all - same semantics the old boolean
+ * conf_mapping_matches() had).
  */
-static bool conf_mapping_matches(const char *conf_mapping, slist_t *requested_confs)
+static char *conf_mapping_matching_confs(const char *conf_mapping, slist_t *requested_confs)
 {
-    char *arrow;
-    char *lhs;
-    char **tokens;
-    bool matched = false;
+    char *arrow = NULL;
+    char *lhs = NULL;
+    char **tokens = NULL;
+    bool wildcard = !conf_mapping;
+    string_t *result;
+    bool any = false;
+    slist_t *p;
     int i;
 
-    if (!conf_mapping) {
-        return true; /* default "*->default" - always participates */
-    }
-
-    arrow = strstr(conf_mapping, "->");
-    lhs = arrow ? strndup(conf_mapping, (size_t)(arrow - conf_mapping)) : strdup(conf_mapping);
-
-    tokens = str_split(lhs, ",", -1);
-    for (i = 0; tokens && tokens[i] && !matched; i++) {
-        char *tok = str_strip(tokens[i]);
-        slist_t *p;
-
-        if (strcmp(tok, "*") == 0) {
-            matched = true;
-            break;
-        }
-        for (p = requested_confs; p; p = slist_next(p)) {
-            if (strcmp(tok, (char *)p->data) == 0) {
-                matched = true;
+    if (conf_mapping) {
+        arrow = strstr(conf_mapping, "->");
+        lhs = arrow ? strndup(conf_mapping, (size_t)(arrow - conf_mapping)) : strdup(conf_mapping);
+        tokens = str_split(lhs, ",", -1);
+        for (i = 0; tokens && tokens[i]; i++) {
+            if (strcmp(str_strip(tokens[i]), "*") == 0) {
+                wildcard = true;
                 break;
             }
         }
     }
+
+    result = string_new("");
+    for (p = requested_confs; p; p = slist_next(p)) {
+        const char *rc = p->data;
+        bool matched = wildcard;
+
+        if (!matched) {
+            for (i = 0; tokens && tokens[i]; i++) {
+                if (strcmp(str_strip(tokens[i]), rc) == 0) {
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        if (matched) {
+            if (any) {
+                string_append(result, ",");
+            }
+            string_append(result, rc);
+            any = true;
+        }
+    }
+
     str_freev(tokens);
     free(lhs);
 
-    return matched;
+    if (!any) {
+        string_free(result, true);
+        return NULL;
+    }
+    return string_free(result, false);
 }
 
 static bool exclude_matches(ivy_exclude_t *ex, const ivy_module_id_t *id)
@@ -155,6 +168,107 @@ static slist_t *merge_excludes(slist_t *a, slist_t *b)
             tail = result;
         } else {
             tail = slist_append(tail, p->data);
+        }
+    }
+    return result;
+}
+
+/* Merges the comma-joined confs in `comma_joined` into the deduped `*list`
+ * (slist of owned char*), appending only names not already present. */
+static void merge_conf_string_into_list(slist_t **list, const char *comma_joined)
+{
+    char **tokens;
+    int i;
+
+    if (!comma_joined) {
+        return;
+    }
+    tokens = str_split(comma_joined, ",", -1);
+    for (i = 0; tokens && tokens[i]; i++) {
+        char *tok = str_strip(tokens[i]);
+        slist_t *p;
+        bool found = false;
+
+        for (p = *list; p; p = slist_next(p)) {
+            if (strcmp((char *)p->data, tok) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            char *copy = strdup(tok);
+            if (!*list) {
+                *list = slist_new(copy);
+            } else {
+                slist_append(slist_last(*list), copy);
+            }
+        }
+    }
+    str_freev(tokens);
+}
+
+static ivy_module_report_t *get_or_create_module_report(walk_ctx_t *ctx,
+                                                          const ivy_module_id_t *id,
+                                                          const char *key2)
+{
+    ivy_module_report_t *mr = hashtable_lookup(ctx->modules, key2);
+    if (!mr) {
+        mr = calloc(1, sizeof(ivy_module_report_t));
+        ivy_module_id_init(&mr->id, id->organisation, id->name, NULL);
+        hashtable_insert(ctx->modules, key2, mr);
+    }
+    return mr;
+}
+
+static ivy_revision_report_t *get_or_create_revision_report(walk_ctx_t *ctx,
+                                                              ivy_module_report_t *mr,
+                                                              const char *key3,
+                                                              const char *revision)
+{
+    ivy_revision_report_t *rr = hashtable_lookup(ctx->revision_index, key3);
+    if (!rr) {
+        rr = calloc(1, sizeof(ivy_revision_report_t));
+        rr->revision = strdup(revision ? revision : "");
+        hashtable_insert(ctx->revision_index, key3, rr);
+        if (!mr->revisions) {
+            mr->revisions = slist_new(rr);
+        } else {
+            slist_append(slist_last(mr->revisions), rr);
+        }
+    }
+    return rr;
+}
+
+static void add_caller_edge(ivy_revision_report_t *rr, const ivy_module_id_t *caller_id,
+                             const char *caller_conf)
+{
+    ivy_caller_t *c = calloc(1, sizeof(ivy_caller_t));
+    ivy_module_id_init(&c->id, caller_id->organisation, caller_id->name, caller_id->revision);
+    c->conf = caller_conf ? strdup(caller_conf) : NULL;
+    if (!rr->callers) {
+        rr->callers = slist_new(c);
+    } else {
+        slist_append(slist_last(rr->callers), c);
+    }
+    merge_conf_string_into_list(&rr->confs, caller_conf);
+}
+
+static slist_t *copy_licenses(slist_t *src)
+{
+    slist_t *result = NULL;
+    slist_t *tail = NULL;
+    slist_t *p;
+
+    for (p = src; p; p = slist_next(p)) {
+        ivy_license_t *s = p->data;
+        ivy_license_t *c = calloc(1, sizeof(ivy_license_t));
+        c->name = s->name ? strdup(s->name) : NULL;
+        c->url = s->url ? strdup(s->url) : NULL;
+        if (!tail) {
+            result = slist_new(c);
+            tail = result;
+        } else {
+            tail = slist_append(tail, c);
         }
     }
     return result;
@@ -211,15 +325,22 @@ static char *build_cache_path(ivy_settings_t *settings, const ivy_module_id_t *i
  * to `cache_dest`, creating any missing parent directories. A cache hit
  * (cache_dest already exists) is a no-op success - this is what makes
  * reruns, and a standalone ivy:retrieve after a prior ivy:resolve, cheap
- * and offline. */
+ * and offline. If out_fresh is non-NULL, it is set to false on a cache hit
+ * and true after an actual fetch/copy completes (left untouched on
+ * failure) - used only by the winning artifact fetch, to populate
+ * ivy_revision_report_t.downloaded for ivy:report. */
 static bool ivy_fetch_to_cache(project_t *project, task_t *task,
-                                const char *source, const char *cache_dest)
+                                const char *source, const char *cache_dest,
+                                bool *out_fresh)
 {
     char *dest_copy;
     char *last_sep;
     bool ok;
 
     if (file_exists(cache_dest)) {
+        if (out_fresh) {
+            *out_fresh = false;
+        }
         return true;
     }
 
@@ -264,6 +385,10 @@ static bool ivy_fetch_to_cache(project_t *project, task_t *task,
             ok = spawn_sync(NULL, cp_argv, NULL, &result) && result.exit_status == 0;
             spawn_result_free(&result);
         }
+    }
+
+    if (ok && out_fresh) {
+        *out_fresh = true;
     }
 
     (void)task;
@@ -326,7 +451,7 @@ static ivy_module_descriptor_t *resolver_find_module(ivy_resolver_t *resolver,
                                    resolver->m2compatible ? "pom" : "xml",
                                    resolver->m2compatible ? id->name : "ivy");
 
-    if (ivy_fetch_to_cache(project, task, source, cache_dest)) {
+    if (ivy_fetch_to_cache(project, task, source, cache_dest, NULL)) {
         md = resolver->m2compatible ? ivy_pom_parse_file(cache_dest, id)
                                      : ivy_descriptor_parse_file(cache_dest);
         if (md && out_resolver) {
@@ -345,21 +470,35 @@ static ivy_module_descriptor_t *resolver_find_module(ivy_resolver_t *resolver,
 
 /*
  * Resolves `id` (fetching+parsing its descriptor if not already cached),
- * records/merges it into the winners table by "latest revision wins", and
- * - only if `recurse` is true - walks its own dependencies in turn.
+ * records the caller edge and "latest revision wins" bookkeeping, and -
+ * only if `recurse` is true - walks its own dependencies in turn.
  * `recurse` reflects the *incoming* edge's transitive attribute (false
  * for a dependency declared transitive="false": it is still resolved
  * itself, just not explored further), not id's own preference.
+ * `caller_id`/`caller_conf` describe the edge that reached `id` - the
+ * calling module's own id, and the comma-joined subset of requested confs
+ * this specific edge maps into (see conf_mapping_matching_confs()).
  */
 static void walk_module(walk_ctx_t *ctx, const ivy_module_id_t *id,
-                         slist_t *inherited_excludes, bool recurse)
+                         slist_t *inherited_excludes, bool recurse,
+                         const ivy_module_id_t *caller_id, const char *caller_conf)
 {
     char *key2;
     char *key3;
+    ivy_module_report_t *mr;
+    ivy_revision_report_t *rr;
     descriptor_cache_entry_t *entry;
-    ivy_resolved_module_t *existing;
 
     key2 = ivy_module_id_key(id);
+    key3 = str_concat(key2, ":", id->revision ? id->revision : "", NULL);
+
+    mr = get_or_create_module_report(ctx, id, key2);
+    rr = get_or_create_revision_report(ctx, mr, key3, id->revision);
+
+    /* Record the caller edge unconditionally, before the cycle check, so a
+     * cyclic edge still shows up in a report even though it isn't walked
+     * further. */
+    add_caller_edge(rr, caller_id, caller_conf);
 
     if (hashtable_lookup(ctx->ancestor_path, key2)) {
         if (ctx->task) {
@@ -368,10 +507,10 @@ static void walk_module(walk_ctx_t *ctx, const ivy_module_id_t *id,
             task_log(ctx->task, LOG_WARNING, msg);
         }
         free(key2);
+        free(key3);
         return;
     }
 
-    key3 = str_concat(key2, ":", id->revision ? id->revision : "", NULL);
     entry = hashtable_lookup(ctx->descriptor_cache, key3);
     if (!entry) {
         ivy_resolver_t *hit_resolver = NULL;
@@ -379,33 +518,34 @@ static void walk_module(walk_ctx_t *ctx, const ivy_module_id_t *id,
                                                              ctx->settings, ctx->project,
                                                              ctx->task, &hit_resolver);
         if (!md) {
-            if (ctx->task) {
-                char msg[512];
-                snprintf(msg, sizeof(msg), "unable to resolve %s:%s:%s",
-                         id->organisation ? id->organisation : "?",
-                         id->name ? id->name : "?",
-                         id->revision ? id->revision : "?");
-                task_log(ctx->task, LOG_WARNING, msg);
+            if (!rr->error) {
+                rr->error = strdup("not found");
+                if (ctx->task) {
+                    char msg[512];
+                    snprintf(msg, sizeof(msg), "unable to resolve %s:%s:%s",
+                             id->organisation ? id->organisation : "?",
+                             id->name ? id->name : "?",
+                             id->revision ? id->revision : "?");
+                    task_log(ctx->task, LOG_WARNING, msg);
+                }
             }
             free(key2);
             free(key3);
-            return;
+            return;   /* rr->error entries never compete to become mr->id.revision */
         }
         entry = calloc(1, sizeof(descriptor_cache_entry_t));
         entry->descriptor = md;
         entry->resolver = hit_resolver;
+        ivy_module_id_init(&entry->id, id->organisation, id->name, id->revision);
         hashtable_insert(ctx->descriptor_cache, key3, entry);
     }
     free(key3);
 
-    existing = hashtable_lookup(ctx->winners, key2);
-    if (!existing) {
-        ivy_resolved_module_t *rm = calloc(1, sizeof(ivy_resolved_module_t));
-        ivy_module_id_init(&rm->id, id->organisation, id->name, id->revision);
-        hashtable_insert(ctx->winners, key2, rm);
-    } else if (ivy_compare_revisions(id->revision, existing->id.revision) > 0) {
-        ivy_module_id_clear(&existing->id);
-        ivy_module_id_init(&existing->id, id->organisation, id->name, id->revision);
+    /* "Latest revision wins" - identical logic to before, now living on
+     * mr->id.revision instead of a separate winners-table value. */
+    if (!mr->id.revision || ivy_compare_revisions(id->revision, mr->id.revision) > 0) {
+        free(mr->id.revision);
+        mr->id.revision = strdup(id->revision ? id->revision : "");
     }
 
     if (recurse) {
@@ -415,18 +555,22 @@ static void walk_module(walk_ctx_t *ctx, const ivy_module_id_t *id,
 
         for (dep_ptr = entry->descriptor->dependencies; dep_ptr; dep_ptr = slist_next(dep_ptr)) {
             ivy_dependency_t *dep = dep_ptr->data;
+            char *matching_confs;
             slist_t *combined;
 
-            if (!conf_mapping_matches(dep->conf_mapping, ctx->requested_confs)) {
+            matching_confs = conf_mapping_matching_confs(dep->conf_mapping, ctx->requested_confs);
+            if (!matching_confs) {
                 continue;
             }
             if (is_excluded(inherited_excludes, &dep->id)) {
+                free(matching_confs);
                 continue;
             }
 
             combined = merge_excludes(inherited_excludes, dep->excludes);
-            walk_module(ctx, &dep->id, combined, dep->transitive);
+            walk_module(ctx, &dep->id, combined, dep->transitive, id, matching_confs);
             slist_free(combined);
+            free(matching_confs);
         }
 
         hashtable_remove(ctx->ancestor_path, key2);
@@ -436,89 +580,100 @@ static void walk_module(walk_ctx_t *ctx, const ivy_module_id_t *id,
 }
 
 /* ========================================================================
- * Finalization: artifact fetch for winners, descriptor ownership transfer
+ * Finalization: extract report fields, fetch the winning artifact, and
+ * free every descriptor - winners and evicted losers alike, in one pass.
  * ======================================================================== */
-
-static void finalize_winner(walk_ctx_t *ctx, const char *key2, ivy_resolved_module_t *rm)
-{
-    char *key3;
-    descriptor_cache_entry_t *entry;
-    slist_t *p, *tail;
-
-    key3 = str_concat(key2, ":", rm->id.revision ? rm->id.revision : "", NULL);
-    entry = hashtable_remove(ctx->descriptor_cache, key3);
-    free(key3);
-
-    if (!entry) {
-        /* Every winner was recorded by walk_module only after successfully
-         * populating descriptor_cache for that exact "org:name:rev", so
-         * this should be unreachable. */
-        return;
-    }
-
-    rm->descriptor = entry->descriptor; /* ownership transferred */
-
-    if (entry->resolver) {
-        ivy_pattern_tokens_t tok = {0};
-        char *rel_path, *source, *cache_dest;
-
-        tok.organisation = rm->id.organisation;
-        tok.module = rm->id.name;
-        tok.revision = rm->id.revision;
-        tok.artifact = rm->id.name;
-        tok.type = "jar";
-        tok.ext = "jar";
-
-        rel_path = ivy_pattern_substitute(entry->resolver->pattern, &tok);
-        source = build_source_location(entry->resolver, rel_path);
-        cache_dest = build_cache_path(ctx->settings, &rm->id, "jars", "jar", rm->id.name);
-        free(rel_path);
-
-        if (ivy_fetch_to_cache(ctx->project, ctx->task, source, cache_dest)) {
-            ivy_artifact_t *art = calloc(1, sizeof(ivy_artifact_t));
-            ivy_module_id_init(&art->id, rm->id.organisation, rm->id.name, rm->id.revision);
-            art->type = strdup("jar");
-            art->ext = strdup("jar");
-            art->cached_path = strdup(cache_dest);
-            rm->artifacts = slist_new(art);
-        } else if (ctx->task) {
-            char msg[512];
-            snprintf(msg, sizeof(msg), "unable to fetch artifact for %s:%s:%s",
-                     rm->id.organisation ? rm->id.organisation : "?",
-                     rm->id.name ? rm->id.name : "?",
-                     rm->id.revision ? rm->id.revision : "?");
-            task_log(ctx->task, LOG_WARNING, msg);
-        }
-
-        free(source);
-        free(cache_dest);
-    }
-
-    /* v1 doesn't track precise per-module conf provenance (see the flat
-     * conf-mapping filter above) - every resolved module is associated
-     * with the full requested-conf set. */
-    tail = NULL;
-    for (p = ctx->requested_confs; p; p = slist_next(p)) {
-        char *c = strdup((char *)p->data);
-        if (!tail) {
-            rm->confs = slist_new(c);
-            tail = rm->confs;
-        } else {
-            tail = slist_append(tail, c);
-        }
-    }
-
-    free(entry);
-}
 
 typedef struct finalize_ctx {
     walk_ctx_t *walk_ctx;
 } finalize_ctx_t;
 
-static void finalize_winners_cb(const char *key, void *value, void *user_data)
+static void finalize_revision(walk_ctx_t *ctx, descriptor_cache_entry_t *entry)
+{
+    char *key3;
+    char *key2;
+    ivy_revision_report_t *rr;
+    ivy_module_report_t *mr;
+
+    key2 = ivy_module_id_key(&entry->id);
+    key3 = str_concat(key2, ":", entry->id.revision ? entry->id.revision : "", NULL);
+    rr = hashtable_lookup(ctx->revision_index, key3);
+    mr = hashtable_lookup(ctx->modules, key2);
+    free(key2);
+    free(key3);
+
+    if (!rr || !mr) {
+        /* Unreachable: walk_module always creates both before ever
+         * creating the corresponding descriptor_cache entry. */
+        ivy_module_descriptor_free(entry->descriptor);
+        ivy_module_id_clear(&entry->id);
+        free(entry);
+        return;
+    }
+
+    rr->status = entry->descriptor->status ? strdup(entry->descriptor->status) : NULL;
+    rr->homepage = entry->descriptor->homepage ? strdup(entry->descriptor->homepage) : NULL;
+    rr->pubdate = entry->descriptor->pubdate ? strdup(entry->descriptor->pubdate) : NULL;
+    rr->licenses = copy_licenses(entry->descriptor->licenses);
+    rr->resolver_name = (entry->resolver && entry->resolver->name)
+                             ? strdup(entry->resolver->name) : NULL;
+
+    if (mr->id.revision && strcmp(rr->revision, mr->id.revision) == 0) {
+        rr->is_default = true;
+
+        if (entry->resolver) {
+            ivy_pattern_tokens_t tok = {0};
+            char *rel_path, *source, *cache_dest;
+            bool fresh = false;
+
+            tok.organisation = entry->id.organisation;
+            tok.module = entry->id.name;
+            tok.revision = entry->id.revision;
+            tok.artifact = entry->id.name;
+            tok.type = "jar";
+            tok.ext = "jar";
+
+            rel_path = ivy_pattern_substitute(entry->resolver->pattern, &tok);
+            source = build_source_location(entry->resolver, rel_path);
+            cache_dest = build_cache_path(ctx->settings, &entry->id, "jars", "jar", entry->id.name);
+            free(rel_path);
+
+            if (ivy_fetch_to_cache(ctx->project, ctx->task, source, cache_dest, &fresh)) {
+                ivy_artifact_t *art = calloc(1, sizeof(ivy_artifact_t));
+                ivy_module_id_init(&art->id, entry->id.organisation, entry->id.name,
+                                    entry->id.revision);
+                art->type = strdup("jar");
+                art->ext = strdup("jar");
+                art->cached_path = strdup(cache_dest);
+                rr->artifacts = slist_new(art);
+                rr->downloaded = fresh;
+            } else if (ctx->task) {
+                char msg[512];
+                snprintf(msg, sizeof(msg), "unable to fetch artifact for %s:%s:%s",
+                         entry->id.organisation ? entry->id.organisation : "?",
+                         entry->id.name ? entry->id.name : "?",
+                         entry->id.revision ? entry->id.revision : "?");
+                task_log(ctx->task, LOG_WARNING, msg);
+            }
+
+            free(source);
+            free(cache_dest);
+        }
+    } else if (mr->id.revision) {
+        rr->evicted = true;
+        rr->evicted_by_rev = strdup(mr->id.revision);
+    }
+
+    ivy_module_descriptor_free(entry->descriptor);
+    ivy_module_id_clear(&entry->id);
+    free(entry);
+}
+
+static void finalize_revision_cb(const char *key, void *value, void *user_data)
 {
     finalize_ctx_t *fc = user_data;
-    finalize_winner(fc->walk_ctx, key, (ivy_resolved_module_t *)value);
+    (void)key;
+    finalize_revision(fc->walk_ctx, (descriptor_cache_entry_t *)value);
 }
 
 /* ========================================================================
@@ -582,34 +737,38 @@ bool ivy_resolve_run(project_t *project, task_t *task,
     resolution = calloc(1, sizeof(ivy_resolution_t));
     resolution->modules = hashtable_new();
     resolution->conf_names = requested_confs;
+    resolution->cache_dir = strdup(settings->cache_dir);
+    ivy_module_id_init(&resolution->root_id, root_md->id.organisation,
+                        root_md->id.name, root_md->id.revision);
 
     ctx.settings = settings;
     ctx.ancestor_path = hashtable_new();
     ctx.descriptor_cache = hashtable_new();
-    ctx.winners = resolution->modules;
+    ctx.modules = resolution->modules;
+    ctx.revision_index = hashtable_new();
     ctx.requested_confs = requested_confs;
     ctx.task = task;
     ctx.project = project;
 
     for (dep_ptr = root_md->dependencies; dep_ptr; dep_ptr = slist_next(dep_ptr)) {
         ivy_dependency_t *dep = dep_ptr->data;
+        char *matching_confs = conf_mapping_matching_confs(dep->conf_mapping, requested_confs);
 
-        if (!conf_mapping_matches(dep->conf_mapping, requested_confs)) {
+        if (!matching_confs) {
             continue;
         }
         /* dep->excludes seeds inherited_excludes: <exclude> declared
          * directly on a root dependency scopes to that dependency's own
          * transitive subtree (see walk_module). */
-        walk_module(&ctx, &dep->id, dep->excludes, dep->transitive);
+        walk_module(&ctx, &dep->id, dep->excludes, dep->transitive, &root_md->id, matching_confs);
+        free(matching_confs);
     }
 
     fctx.walk_ctx = &ctx;
-    hashtable_foreach(resolution->modules, finalize_winners_cb, &fctx);
+    hashtable_foreach(ctx.descriptor_cache, finalize_revision_cb, &fctx);
 
-    /* Whatever remains in descriptor_cache is losing revisions - their
-     * artifacts were never fetched, only their descriptors (needed to walk
-     * their own transitive dependencies while exploring the graph). */
-    hashtable_free_full(ctx.descriptor_cache, descriptor_cache_entry_free);
+    hashtable_free(ctx.descriptor_cache);   /* entries already freed by finalize_revision */
+    hashtable_free(ctx.revision_index);      /* non-owning index */
     hashtable_free(ctx.ancestor_path);
     ivy_module_descriptor_free(root_md);
     ivy_settings_free(settings);
@@ -756,34 +915,42 @@ typedef struct retrieve_ctx {
     int count;
 } retrieve_ctx_t;
 
-/* Writes one copy of each of a resolved module's artifacts per
- * configuration it belongs to (in v1 every resolved module belongs to the
- * full requested-conf set - see the "v1 doesn't track precise per-module
- * conf provenance" note in finalize_winner). An existing destination is
- * left alone rather than re-copied - dest paths are revision-qualified by
- * construction, so an existing file there is already the right content,
- * the same reasoning that makes the cache itself skip re-fetching. */
+/* Writes one copy of the winning revision's artifacts per configuration it
+ * belongs to. Modules with no winner (every attempt at them errored) are
+ * silently skipped - same effective behaviour as before this file tracked
+ * error entries at all, since such a module never appeared in
+ * resolution->modules in the first place under the old model. An existing
+ * destination is left alone rather than re-copied - dest paths are
+ * revision-qualified by construction, so an existing file there is already
+ * the right content, the same reasoning that makes the cache itself skip
+ * re-fetching. */
 static void retrieve_module_cb(const char *key, void *value, void *user_data)
 {
     retrieve_ctx_t *rctx = user_data;
-    ivy_resolved_module_t *rm = value;
+    ivy_module_report_t *mr = value;
+    ivy_revision_report_t *rr;
     slist_t *conf_ptr;
 
     (void)key;
 
-    for (conf_ptr = rm->confs; conf_ptr; conf_ptr = slist_next(conf_ptr)) {
+    rr = ivy_module_report_find_default(mr);
+    if (!rr) {
+        return;
+    }
+
+    for (conf_ptr = rr->confs; conf_ptr; conf_ptr = slist_next(conf_ptr)) {
         const char *conf_name = conf_ptr->data;
         slist_t *art_ptr;
 
-        for (art_ptr = rm->artifacts; art_ptr; art_ptr = slist_next(art_ptr)) {
+        for (art_ptr = rr->artifacts; art_ptr; art_ptr = slist_next(art_ptr)) {
             ivy_artifact_t *art = art_ptr->data;
             ivy_pattern_tokens_t tok = {0};
             char *dest;
 
-            tok.organisation = rm->id.organisation;
-            tok.module = rm->id.name;
-            tok.revision = rm->id.revision;
-            tok.artifact = rm->id.name;
+            tok.organisation = mr->id.organisation;
+            tok.module = mr->id.name;
+            tok.revision = mr->id.revision;
+            tok.artifact = mr->id.name;
             tok.type = art->type;
             tok.ext = art->ext;
             tok.conf = conf_name;
