@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ivy-cache-report-test" default="test" basedir="."
+         xmlns:ivy="antlib:org.apache.ivy.ant">
+
+    <description>
+        Tests ivy:cachepath, ivy:cachefileset, and ivy:report against a
+        local, offline fixture repository covering a version conflict, a
+        real ivy.xml descriptor with homepage/pubdate/license, a POM with
+        licenses, and a deliberately unresolvable dependency.
+    </description>
+
+    <property name="build.dir" value="${basedir}/build"/>
+
+    <!-- ivy:cachefileset's registered fileset is consumed via a top-level
+         <path><fileset refid=".."/></path>, the same way any other
+         fileset registered into project->fileset_dict would be. -->
+    <path id="cachefileset.as.path">
+        <fileset refid="ivy.fs"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build.dir}"/>
+    </target>
+
+    <target name="test-cachepath" depends="init">
+        <echo message="Testing ivy:cachepath..."/>
+        <ivy:cachepath file="ivy.xml" settingsfile="ivysettings.xml" pathid="ivy.cp"/>
+        <pathconvert property="cp.str" refid="ivy.cp" pathsep=":"/>
+        <echo message="cachepath result: ${cp.str}"/>
+    </target>
+
+    <target name="test-cachefileset" depends="test-cachepath">
+        <echo message="Testing ivy:cachefileset..."/>
+        <ivy:cachefileset file="ivy.xml" settingsfile="ivysettings.xml" setid="ivy.fs"/>
+        <pathconvert property="fs.str" refid="cachefileset.as.path" pathsep=":"/>
+        <echo message="cachefileset result: ${fs.str}"/>
+    </target>
+
+    <target name="test-report" depends="test-cachefileset">
+        <echo message="Testing ivy:report..."/>
+        <ivy:report file="ivy.xml" settingsfile="ivysettings.xml" todir="${build.dir}/reports"/>
+    </target>
+
+    <target name="test" depends="test-report">
+        <echo message=""/>
+        <echo message="=== Ivy Cache/Report Tests Complete ==="/>
+    </target>
+
+</project>

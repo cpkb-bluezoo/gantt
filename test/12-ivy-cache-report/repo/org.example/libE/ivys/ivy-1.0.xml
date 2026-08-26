@@ -1,0 +1,6 @@
+<ivy-module version="2.0">
+  <info organisation="org.example" module="libE" revision="1.0"
+        homepage="https://example.org/libE" pubdate="20260101120000">
+    <license name="MIT" url="https://opensource.org/licenses/MIT"/>
+  </info>
+</ivy-module>

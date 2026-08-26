@@ -1,0 +1,17 @@
+<ivy-module version="2.0">
+  <info organisation="test" module="cacherpt" revision="1.0"/>
+  <configurations>
+    <conf name="default"/>
+  </configurations>
+  <dependencies>
+    <!-- transitive dependency, and the two paths that conflict on libA -->
+    <dependency org="com.example" name="libB" rev="1.0"/>
+    <dependency org="com.example" name="libC" rev="1.0"/>
+    <dependency org="com.example" name="libD" rev="2.0"/>
+    <!-- real ivy.xml descriptor via a non-m2compatible resolver, carrying
+         homepage/pubdate/license info for the report to surface -->
+    <dependency org="org.example" name="libE" rev="1.0"/>
+    <!-- deliberately unresolvable, to exercise the report's error path -->
+    <dependency org="com.example" name="doesnotexist" rev="9.9"/>
+  </dependencies>
+</ivy-module>
