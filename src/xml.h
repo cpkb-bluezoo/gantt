@@ -2,7 +2,7 @@
  * xml.h
  * SAX-style XML parser using expat - replaces libxml2 dependency
  *
- * Copyright (C) 2005, 2026 Chris Burdess <dog@bluezoo.org>
+ * Copyright (C) 2005, 2026 Chris Burdess <dog@gnu.org>
  * 
  * This file is part of gantt.
  * 

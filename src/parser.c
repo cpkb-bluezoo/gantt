@@ -5,7 +5,7 @@
  * Builds typed project/target/task structures directly without
  * intermediate DOM representation.
  *
- * Copyright (C) 2026 Chris Burdess <dog@bluezoo.org>
+ * Copyright (C) 2026 Chris Burdess <dog@gnu.org>
  * 
  * This file is part of gantt.
  * 

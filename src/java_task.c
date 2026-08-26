@@ -2,7 +2,7 @@
  * java_task.c
  * Implementation of the <java> task - runs a Java class or JAR file
  *
- * Copyright (C) 2026 Chris Burdess <dog@bluezoo.org>
+ * Copyright (C) 2026 Chris Burdess <dog@gnu.org>
  * 
  * This file is part of gantt.
  * 

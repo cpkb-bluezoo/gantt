@@ -1,6 +1,6 @@
 /*
  * exec.c
- * Copyright (C) 2005, 2026 Chris Burdess <dog@bluezoo.org>
+ * Copyright (C) 2005, 2026 Chris Burdess <dog@gnu.org>
  * 
  * This file is part of gantt.
  * 
