@@ -633,6 +633,7 @@ bool task_invoke(task_t *task, project_t *project)
         hashtable_insert(invoke_dict, "ivy:retrieve", ivy_retrieve_invoke);
         hashtable_insert(invoke_dict, "ivy:cachepath", ivy_cachepath_invoke);
         hashtable_insert(invoke_dict, "ivy:cachefileset", ivy_cachefileset_invoke);
+        hashtable_insert(invoke_dict, "ivy:report", ivy_report_invoke);
     }
     
     f = (task_invoke_fn)hashtable_lookup(invoke_dict, task->name);

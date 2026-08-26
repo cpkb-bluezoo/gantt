@@ -71,6 +71,7 @@ SOURCES = \
     ivy_parse.c \
     ivy_resolve.c \
     ivy_cache_tasks.c \
+    ivy_report.c \
     parser.c \
     gantt.c
 
