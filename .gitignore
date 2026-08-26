@@ -17,6 +17,7 @@ bin/gantt_concat
 # Generated test output - test/run-tests.sh regenerates these on every run
 test/*/build/
 test/*/dist/
+test/*/publish-target/
 # Stray output from unexpanded ${basedir} references (a pre-existing bug in
 # some test build.xml files) landing as a literal directory name
 test/*/${basedir}/

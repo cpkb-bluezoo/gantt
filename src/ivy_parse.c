@@ -409,6 +409,19 @@ void ivy_license_free(void *p)
     free(lic);
 }
 
+static void publication_free(void *p)
+{
+    ivy_publication_t *pub = p;
+    if (!pub) {
+        return;
+    }
+    free(pub->name);
+    free(pub->type);
+    free(pub->ext);
+    free(pub->conf);
+    free(pub);
+}
+
 void ivy_module_descriptor_free(ivy_module_descriptor_t *md)
 {
     if (!md) {
@@ -421,6 +434,7 @@ void ivy_module_descriptor_free(ivy_module_descriptor_t *md)
     slist_free_full(md->licenses, ivy_license_free);
     free(md->homepage);
     free(md->pubdate);
+    slist_free_full(md->publications, publication_free);
     free(md);
 }
 
@@ -437,6 +451,25 @@ static void synthesize_default_configuration(ivy_module_descriptor_t *md)
     conf->name = strdup("default");
     conf->visibility = strdup("public");
     md->configurations = slist_new(conf);
+}
+
+/* Real Ivy defaults to publishing a single artifact named after the module
+ * (type=jar, ext=jar) when <publications> is entirely absent. Only called
+ * from ivy_descriptor_parse_file() - ivy:publish always reads the local
+ * ivy.xml directly, never through the POM fallback path, so a POM-derived
+ * descriptor never needs this. */
+static void synthesize_default_publication(ivy_module_descriptor_t *md)
+{
+    ivy_publication_t *pub;
+    if (md->publications) {
+        return;
+    }
+    pub = calloc(1, sizeof(ivy_publication_t));
+    pub->name = strdup(md->id.name);
+    pub->type = strdup("jar");
+    pub->ext = strdup("jar");
+    pub->conf = strdup("*");
+    md->publications = slist_new(pub);
 }
 
 /* ========================================================================
@@ -576,11 +609,42 @@ ivy_module_descriptor_t *ivy_descriptor_parse_file(const char *filename)
                             filename);
                 }
             }
+        } else if (xml_streq(cur->name, "publications")) {
+            xml_node_t *pnode;
+            slist_t *pub_tail = NULL;
+            for (pnode = cur->children; pnode; pnode = pnode->next) {
+                ivy_publication_t *pub;
+                const char *name, *type, *ext, *conf;
+                if (!xml_streq(pnode->name, "artifact")) {
+                    continue;
+                }
+                name = xml_node_get_attr(pnode, "name");
+                type = xml_node_get_attr(pnode, "type");
+                ext = xml_node_get_attr(pnode, "ext");
+                conf = xml_node_get_attr(pnode, "conf");
+
+                pub = calloc(1, sizeof(ivy_publication_t));
+                pub->name = strdup(name ? name : md->id.name);
+                pub->type = strdup(type ? type : "jar");
+                /* ext defaults from type when type is given but ext isn't -
+                 * matches real Ivy (e.g. type="source" implies ext="source"
+                 * unless overridden). */
+                pub->ext = strdup(ext ? ext : (type ? type : "jar"));
+                pub->conf = strdup(conf ? conf : "*");
+
+                if (!pub_tail) {
+                    md->publications = slist_new(pub);
+                    pub_tail = md->publications;
+                } else {
+                    pub_tail = slist_append(pub_tail, pub);
+                }
+            }
         }
     }
 
     xml_doc_free(doc);
     synthesize_default_configuration(md);
+    synthesize_default_publication(md);
 
     return md;
 }
@@ -849,6 +913,8 @@ static void resolver_free(void *p)
     free(r->root);
     free(r->pattern);
     free(r->ivy_pattern);
+    free(r->username);
+    free(r->password);
     /* chain_resolvers holds non-owning pointers - every resolver, named or
      * anonymous, is registered (and thus owned) via settings->resolvers, so
      * only the list structure is freed here, never the pointed-to resolvers. */
@@ -948,6 +1014,13 @@ static ivy_resolver_t *parse_resolver_node(xml_node_t *node, ivy_settings_t *set
         r->root = expand_props(root, project);
     } else if (kind == IVY_RESOLVER_IBIBLIO) {
         r->root = strdup("https://repo1.maven.org/maven2/");
+    }
+
+    {
+        const char *username = xml_node_get_attr(node, "username");
+        const char *password = xml_node_get_attr(node, "password");
+        r->username = expand_props(username, project);
+        r->password = expand_props(password, project);
     }
 
     /* m2compatible applies to any of the three leaf kinds, not just ibiblio

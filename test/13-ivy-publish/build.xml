@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ivy-publish-test" default="test" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+    <target name="test">
+        <ivy:publish resolver="publishrepo" settingsfile="ivysettings.xml" pubrevision="2.0"/>
+    </target>
+    <target name="overwrite-check" depends="test">
+        <ivy:publish resolver="publishrepo" settingsfile="ivysettings.xml" pubrevision="2.0"/>
+    </target>
+</project>

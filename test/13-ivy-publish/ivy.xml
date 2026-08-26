@@ -1,0 +1,6 @@
+<ivy-module version="2.0">
+  <info organisation="test" module="myapp" revision="1.0-SNAPSHOT"/>
+  <publications>
+    <artifact name="myapp" type="jar" ext="jar"/>
+  </publications>
+</ivy-module>

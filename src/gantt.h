@@ -253,6 +253,7 @@ bool ivy_retrieve_invoke(task_t *task, project_t *project);
 bool ivy_cachepath_invoke(task_t *task, project_t *project);
 bool ivy_cachefileset_invoke(task_t *task, project_t *project);
 bool ivy_report_invoke(task_t *task, project_t *project);
+bool ivy_publish_invoke(task_t *task, project_t *project);
 
 char *expand_location(project_t *project, char *location);
 

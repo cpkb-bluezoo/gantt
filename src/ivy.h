@@ -83,6 +83,14 @@ typedef struct ivy_license {
 /* slist_free_full callback; also reusable for a deep-copied license list. */
 void ivy_license_free(void *p);
 
+typedef struct ivy_publication {
+    char *name;   /* defaults to the module's own name */
+    char *type;   /* default "jar" */
+    char *ext;    /* defaults to type if type given but ext isn't, else "jar" */
+    char *conf;   /* raw comma list / "*"; parsed but not consulted by ivy:publish
+                    * v1 - matches real Ivy, which doesn't duplicate uploads per conf */
+} ivy_publication_t;
+
 typedef struct ivy_module_descriptor {
     ivy_module_id_t id;
     char *status;                  /* default "release" */
@@ -92,6 +100,13 @@ typedef struct ivy_module_descriptor {
     slist_t *licenses;               /* slist of ivy_license_t*, zero or more */
     char *homepage;                   /* ivy.xml <info homepage=".."> or POM <url> */
     char *pubdate;                      /* ivy.xml <info pubdate=".."> only; NULL for from_pom */
+    slist_t *publications;                /* slist of ivy_publication_t*; always
+                                            * non-empty after ivy_descriptor_parse_file()
+                                            * returns (synthesized to one default entry
+                                            * if <publications> is absent); NULL for a
+                                            * POM-derived descriptor - ivy:publish always
+                                            * reads the local ivy.xml directly, never
+                                            * through the POM fallback path */
 } ivy_module_descriptor_t;
 
 /* Parses a real ivy.xml module descriptor file. Returns NULL on error. */
@@ -129,6 +144,10 @@ typedef struct ivy_resolver {
     char *ivy_pattern;         /* ivy descriptor pattern (filesystem/url only) */
     slist_t *chain_resolvers;  /* chain only: ordered slist of ivy_resolver_t* */
     bool chain_return_first;   /* chain only: v1 default true */
+    char *username;             /* optional; for authenticated fetch (ivy_fetch_to_cache)
+                                  * and ivy:publish's upload; applies to any leaf kind,
+                                  * not chain (members carry their own) */
+    char *password;
 } ivy_resolver_t;
 
 typedef struct ivy_settings {
@@ -273,6 +292,15 @@ bool ivy_resolve_run(project_t *project, task_t *task,
  * ivy_settings_default()). Caller frees the result.
  */
 char *discover_settings_file(task_t *task, project_t *project);
+
+/*
+ * Joins resolver->root and rel_path (a pattern-substituted relative path)
+ * into a full source or destination location - used both to fetch a
+ * dependency's descriptor/artifact and (ivy_publish.c) to compute where to
+ * upload one. If the resolver has no root, rel_path is already the
+ * complete location. Caller must free the result.
+ */
+char *ivy_resolver_location(ivy_resolver_t *resolver, const char *rel_path);
 
 /* ========================================================================
  * Pattern substitution

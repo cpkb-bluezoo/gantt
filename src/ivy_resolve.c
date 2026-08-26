@@ -282,8 +282,10 @@ static slist_t *copy_licenses(slist_t *src)
  * filesystem/url resolver whose pattern is already a full absolute path,
  * as is conventional when its <artifact pattern=".."/> bakes in the
  * location directly rather than using a separate root= attribute),
- * rel_path is already the complete source location. */
-static char *build_source_location(ivy_resolver_t *resolver, const char *rel_path)
+ * rel_path is already the complete location. Declared in ivy.h - shared
+ * with ivy_publish.c, which uses the exact same join logic for a publish
+ * destination. */
+char *ivy_resolver_location(ivy_resolver_t *resolver, const char *rel_path)
 {
     size_t root_len;
 
@@ -331,6 +333,7 @@ static char *build_cache_path(ivy_settings_t *settings, const ivy_module_id_t *i
  * ivy_revision_report_t.downloaded for ivy:report. */
 static bool ivy_fetch_to_cache(project_t *project, task_t *task,
                                 const char *source, const char *cache_dest,
+                                const char *username, const char *password,
                                 bool *out_fresh)
 {
     char *dest_copy;
@@ -364,16 +367,27 @@ static bool ivy_fetch_to_cache(project_t *project, task_t *task,
         char *dest_val = strdup(cache_dest);
         char *skip_val = strdup("true");
 
+        char *username_val = username ? strdup(username) : NULL;
+        char *password_val = password ? strdup(password) : NULL;
+
         get_task->name = strdup("get"); /* task_log() requires a non-NULL name */
         hashtable_insert(get_task->attribute_dict, "src", src_val);
         hashtable_insert(get_task->attribute_dict, "dest", dest_val);
         hashtable_insert(get_task->attribute_dict, "skipexisting", skip_val);
+        if (username_val) {
+            hashtable_insert(get_task->attribute_dict, "username", username_val);
+        }
+        if (password_val) {
+            hashtable_insert(get_task->attribute_dict, "password", password_val);
+        }
 
         ok = get_invoke(get_task, project);
 
         free(src_val);
         free(dest_val);
         free(skip_val);
+        free(username_val);
+        free(password_val);
         task_free(get_task);
     } else {
         const char *local = str_has_prefix(source, "file://") ? source + 7 : source;
@@ -442,7 +456,7 @@ static ivy_module_descriptor_t *resolver_find_module(ivy_resolver_t *resolver,
 
     pattern_to_use = resolver->m2compatible ? resolver->pattern : resolver->ivy_pattern;
     rel_path = ivy_pattern_substitute(pattern_to_use, &tok);
-    source = build_source_location(resolver, rel_path);
+    source = ivy_resolver_location(resolver, rel_path);
     free(rel_path);
 
     /* Cache layout matches real Ivy: poms/[module]-[revision].pom, but
@@ -451,7 +465,8 @@ static ivy_module_descriptor_t *resolver_find_module(ivy_resolver_t *resolver,
                                    resolver->m2compatible ? "pom" : "xml",
                                    resolver->m2compatible ? id->name : "ivy");
 
-    if (ivy_fetch_to_cache(project, task, source, cache_dest, NULL)) {
+    if (ivy_fetch_to_cache(project, task, source, cache_dest,
+                            resolver->username, resolver->password, NULL)) {
         md = resolver->m2compatible ? ivy_pom_parse_file(cache_dest, id)
                                      : ivy_descriptor_parse_file(cache_dest);
         if (md && out_resolver) {
@@ -634,11 +649,12 @@ static void finalize_revision(walk_ctx_t *ctx, descriptor_cache_entry_t *entry)
             tok.ext = "jar";
 
             rel_path = ivy_pattern_substitute(entry->resolver->pattern, &tok);
-            source = build_source_location(entry->resolver, rel_path);
+            source = ivy_resolver_location(entry->resolver, rel_path);
             cache_dest = build_cache_path(ctx->settings, &entry->id, "jars", "jar", entry->id.name);
             free(rel_path);
 
-            if (ivy_fetch_to_cache(ctx->project, ctx->task, source, cache_dest, &fresh)) {
+            if (ivy_fetch_to_cache(ctx->project, ctx->task, source, cache_dest,
+                                    entry->resolver->username, entry->resolver->password, &fresh)) {
                 ivy_artifact_t *art = calloc(1, sizeof(ivy_artifact_t));
                 ivy_module_id_init(&art->id, entry->id.organisation, entry->id.name,
                                     entry->id.revision);
