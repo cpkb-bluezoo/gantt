@@ -266,6 +266,14 @@ bool ivy_resolve_run(project_t *project, task_t *task,
                       const char *ivy_file, const char *settings_file,
                       const char *conf_filter, ivy_resolution_t **out_resolution);
 
+/*
+ * Shared settingsfile discovery for every ivy:* task: an explicit
+ * `settingsfile` attribute always wins; otherwise ${basedir}/ivysettings.xml
+ * is used if it exists, else NULL (zero-config default, see
+ * ivy_settings_default()). Caller frees the result.
+ */
+char *discover_settings_file(task_t *task, project_t *project);
+
 /* ========================================================================
  * Pattern substitution
  * ======================================================================== */

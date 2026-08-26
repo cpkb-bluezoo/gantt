@@ -250,6 +250,8 @@ bool local_invoke(task_t *task, project_t *project);
 bool native2ascii_invoke(task_t *task, project_t *project);
 bool ivy_resolve_invoke(task_t *task, project_t *project);
 bool ivy_retrieve_invoke(task_t *task, project_t *project);
+bool ivy_cachepath_invoke(task_t *task, project_t *project);
+bool ivy_cachefileset_invoke(task_t *task, project_t *project);
 
 char *expand_location(project_t *project, char *location);
 

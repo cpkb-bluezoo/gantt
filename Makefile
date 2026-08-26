@@ -70,6 +70,7 @@ SOURCES = \
     native2ascii.c \
     ivy_parse.c \
     ivy_resolve.c \
+    ivy_cache_tasks.c \
     parser.c \
     gantt.c
 

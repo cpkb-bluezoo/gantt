@@ -785,7 +785,7 @@ bool ivy_resolve_run(project_t *project, task_t *task,
  * an explicit attribute always wins; otherwise ${basedir}/ivysettings.xml
  * is used if it exists, else NULL (zero-config default, see
  * ivy_settings_default()). Caller frees the result. */
-static char *discover_settings_file(task_t *task, project_t *project)
+char *discover_settings_file(task_t *task, project_t *project)
 {
     const char *attr = hashtable_lookup(task->attribute_dict, "settingsfile");
     char *settings_file;
