@@ -103,63 +103,111 @@ static char *get_dirname(const char *path)
     return strdup(".");
 }
 
+/*
+ * Recursively deletes the CONTENTS of an already-open directory (dfd),
+ * operating entirely via *at() functions relative to dfd or a freshly
+ * opened child fd - never re-resolving a path string from the filesystem
+ * root once inside this function. This is what closes the "an ancestor
+ * directory got swapped mid-walk" class of time-of-check/time-of-use race
+ * (each entry is checked with fstatat() and then acted on with
+ * unlinkat()/openat() using the exact same dfd+name pair, rather than a
+ * path string that gets independently re-resolved for the check and for
+ * the removal). A residual race on the leaf entry itself (something else
+ * replaces exactly that name in the same instant) is inherent to
+ * name-based removal on POSIX and isn't something any API closes - this
+ * addresses the class of race that *is* fixable, matching the standard
+ * "prefer fd-relative operations to path-based ones" mitigation.
+ * Does not remove the directory dfd itself - the caller does that once
+ * this returns, since dfd carries no name of its own for messages/rmdir().
+ * Takes ownership of dfd (always closes it, via closedir()).
+ */
+__attribute__((unused))
+static int rmdir_recursive_contents(int dfd, const char *display_path)
+{
+    DIR *dir;
+    struct dirent *entry;
+    int ret = 0;
+
+    dir = fdopendir(dfd);
+    if (!dir) {
+        close(dfd);
+        return -1;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        struct stat st;
+        char child_display[PATH_MAX];
+
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        if (fstatat(dfd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) {
+            ret = -1;
+            continue;
+        }
+
+        snprintf(child_display, PATH_MAX, "%s/%s", display_path, entry->d_name);
+
+        if (S_ISDIR(st.st_mode)) {
+            int child_dfd = openat(dfd, entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+            if (child_dfd < 0) {
+                ret = -1;
+                continue;
+            }
+            if (rmdir_recursive_contents(child_dfd, child_display) != 0) {
+                ret = -1;
+            }
+            if (unlinkat(dfd, entry->d_name, AT_REMOVEDIR) != 0) {
+                if (!quiet)
+                    fprintf(stderr, "delete: cannot remove directory '%s': %s\n",
+                            child_display, strerror(errno));
+                ret = -1;
+            } else if (verbose) {
+                printf("Deleted directory: %s\n", child_display);
+            }
+        } else {
+            if (unlinkat(dfd, entry->d_name, 0) != 0) {
+                if (!quiet)
+                    fprintf(stderr, "delete: cannot remove '%s': %s\n",
+                            child_display, strerror(errno));
+                ret = -1;
+            } else if (verbose) {
+                printf("Deleted: %s\n", child_display);
+            }
+        }
+    }
+
+    closedir(dir);  /* also closes dfd */
+    return ret;
+}
+
 /* Recursive directory deletion */
 __attribute__((unused))
 static int rmdir_recursive(const char *path)
 {
-    DIR *dir;
-    struct dirent *entry;
-    char filepath[PATH_MAX];
-    struct stat st;
-    int ret = 0;
-    
-    dir = opendir(path);
-    if (!dir) {
+    int dfd;
+    int ret;
+
+    dfd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (dfd < 0) {
         if (errno == ENOENT) {
             return 0;  /* Already gone */
         }
         return -1;
     }
-    
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-        
-        snprintf(filepath, PATH_MAX, "%s/%s", path, entry->d_name);
-        
-        if (lstat(filepath, &st) != 0) {
-            ret = -1;
-            continue;
-        }
-        
-        if (S_ISDIR(st.st_mode)) {
-            if (rmdir_recursive(filepath) != 0) {
-                ret = -1;
-            }
-        } else {
-            if (unlink(filepath) != 0) {
-                if (!quiet)
-                    fprintf(stderr, "delete: cannot remove '%s': %s\n", 
-                            filepath, strerror(errno));
-                ret = -1;
-            } else if (verbose) {
-                printf("Deleted: %s\n", filepath);
-            }
-        }
-    }
-    
-    closedir(dir);
-    
+
+    ret = rmdir_recursive_contents(dfd, path);
+
     if (rmdir(path) != 0) {
         if (!quiet)
-            fprintf(stderr, "delete: cannot remove directory '%s': %s\n", 
+            fprintf(stderr, "delete: cannot remove directory '%s': %s\n",
                     path, strerror(errno));
         ret = -1;
     } else if (verbose) {
         printf("Deleted directory: %s\n", path);
     }
-    
+
     return ret;
 }
 
@@ -519,54 +567,130 @@ static int do_chmod_file(const char *path, mode_t mode)
         fprintf(stderr, "chmod: cannot change mode of '%s': %s\n", path, strerror(errno));
         return failonerror ? -1 : 0;
     }
-    
+
     if (verbose)
         printf("chmod %o %s\n", mode, path);
-    
+
     return 0;
+}
+
+/* fchmodat() equivalent of do_chmod_file(), for a file reached during a
+ * directory walk - see chmod_recursive_contents(). Flags 0 (not
+ * AT_SYMLINK_NOFOLLOW) to match do_chmod_file()'s plain chmod(), which
+ * always follows symlinks - AT_SYMLINK_NOFOLLOW is also not universally
+ * supported by fchmodat() (notably absent on Linux, present on
+ * macOS/BSD), so using it here would be a portability hazard for no
+ * behavioural gain. */
+static int do_chmod_at(int dfd, const char *name, const char *display_path, mode_t mode)
+{
+    if (fchmodat(dfd, name, mode, 0) != 0) {
+        fprintf(stderr, "chmod: cannot change mode of '%s': %s\n", display_path, strerror(errno));
+        return failonerror ? -1 : 0;
+    }
+
+    if (verbose)
+        printf("chmod %o %s\n", mode, display_path);
+
+    return 0;
+}
+
+/*
+ * Recursively chmods everything inside an already-open directory (dfd),
+ * operating via *at() functions relative to dfd or a freshly opened child
+ * fd - never re-resolving a path string from the filesystem root once
+ * inside this function. Each child's type is determined by *attempting*
+ * to open it as a directory rather than by a separate stat() beforehand:
+ * success means it's a directory (and the already-open fd is what gets
+ * chmod'd/recursed into, not a path re-resolved afterwards); ENOTDIR
+ * means it's a file, chmod'd via the same dfd+name pair with
+ * do_chmod_at(). This closes the "an ancestor directory got swapped
+ * mid-walk" class of time-of-check/time-of-use race, the same fix
+ * applied to rmdir_recursive_contents() for the same underlying CodeQL
+ * finding (cpp/toctou-race-condition). Takes ownership of dfd (always
+ * closes it, via closedir()).
+ */
+static int chmod_recursive_contents(int dfd, const char *display_path, mode_t mode,
+                                     int do_files, int do_dirs)
+{
+    DIR *dir;
+    struct dirent *entry;
+    int ret = 0;
+
+    dir = fdopendir(dfd);
+    if (!dir) {
+        close(dfd);
+        return -1;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        char child_display[PATH_MAX];
+        int child_dfd;
+
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        snprintf(child_display, PATH_MAX, "%s/%s", display_path, entry->d_name);
+
+        child_dfd = openat(dfd, entry->d_name, O_RDONLY | O_DIRECTORY);
+        if (child_dfd >= 0) {
+            if (do_dirs && fchmod(child_dfd, mode) != 0) {
+                fprintf(stderr, "chmod: cannot change mode of '%s': %s\n",
+                        child_display, strerror(errno));
+                if (failonerror) {
+                    ret = -1;
+                }
+            } else if (do_dirs && verbose) {
+                printf("chmod %o %s\n", mode, child_display);
+            }
+            if (chmod_recursive_contents(child_dfd, child_display, mode,
+                                          do_files, do_dirs) != 0) {
+                ret = -1;
+            }
+        } else if (errno == ENOTDIR) {
+            if (do_files && do_chmod_at(dfd, entry->d_name, child_display, mode) != 0) {
+                ret = -1;
+            }
+        } else {
+            ret = -1;
+        }
+    }
+
+    closedir(dir);  /* also closes dfd */
+    return ret;
 }
 
 static int chmod_recursive(const char *path, mode_t mode, const char *type_filter)
 {
-    DIR *dir;
-    struct dirent *entry;
-    char filepath[PATH_MAX];
-    struct stat st;
+    int dfd;
     int ret = 0;
     int do_files = !type_filter || strcmp(type_filter, "file") == 0 || strcmp(type_filter, "both") == 0;
     int do_dirs = !type_filter || strcmp(type_filter, "dir") == 0 || strcmp(type_filter, "both") == 0;
-    
-    if (stat(path, &st) != 0) {
+
+    dfd = open(path, O_RDONLY | O_DIRECTORY);
+    if (dfd < 0) {
+        if (errno == ENOTDIR) {
+            /* Not a directory - treat as a plain file/symlink. open()
+             * itself already tells us the type; no separate stat()
+             * needed (and no TOCTOU gap between a check and this). */
+            return do_files ? do_chmod_file(path, mode) : 0;
+        }
         return -1;
     }
-    
-    if (S_ISDIR(st.st_mode)) {
-        if (do_dirs && do_chmod_file(path, mode) != 0) {
+
+    if (do_dirs && fchmod(dfd, mode) != 0) {
+        fprintf(stderr, "chmod: cannot change mode of '%s': %s\n", path, strerror(errno));
+        if (failonerror) {
             ret = -1;
         }
-        
-        dir = opendir(path);
-        if (!dir) {
-            return -1;
-        }
-        
-        while ((entry = readdir(dir)) != NULL) {
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                continue;
-            }
-            
-            snprintf(filepath, PATH_MAX, "%s/%s", path, entry->d_name);
-            if (chmod_recursive(filepath, mode, type_filter) != 0) {
-                ret = -1;
-            }
-        }
-        closedir(dir);
-    } else if (do_files) {
-        if (do_chmod_file(path, mode) != 0) {
-            ret = -1;
-        }
+    } else if (do_dirs && verbose) {
+        printf("chmod %o %s\n", mode, path);
     }
-    
+
+    if (chmod_recursive_contents(dfd, path, mode, do_files, do_dirs) != 0) {
+        ret = -1;
+    }
+
     return ret;
 }
 
