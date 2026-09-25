@@ -1,4 +1,6 @@
 #!/bin/bash
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Gantt vs Apache Ant Benchmark Suite
 #

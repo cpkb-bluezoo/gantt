@@ -129,72 +129,55 @@ Expat is in the base system. Just ensure you have a C compiler.
 
 ## Building
 
+From a release tarball:
+
 ```bash
-# Clone or extract the source
-cd gantt
-
-# Build
+./configure
 make
-
-# Run tests (optional)
-make test
+make check      # optional
 ```
 
-The build produces a single `gantt` executable.
+From a git checkout, generate `configure` first (requires autoconf and
+automake):
+
+```bash
+./autogen.sh
+./configure
+make
+```
+
+This builds the `gantt` executable and its helper executables (`gantt_copy`,
+`gantt_delete`, `gantt_move`, `gantt_touch`, `gantt_chmod`, `gantt_mkdir`,
+`gantt_concat`). Out-of-tree builds (`mkdir build && cd build && ../configure`)
+are supported.
 
 ### Build Options
 
-Override compiler or flags if needed:
+`configure` accepts the standard GNU options (`--prefix`, `--bindir`,
+`DESTDIR`, ...). Override the compiler or flags in the usual way:
 
 ```bash
-# Use a specific compiler
-make CC=clang
+./configure CC=clang CFLAGS="-g -O0"
 
-# Add debug symbols
-make CFLAGS="-Wall -Wextra -g -O0 -std=c99"
-
-# Custom include/library paths (rarely needed)
-make INCLUDES="-I/custom/include" LDFLAGS="-L/custom/lib"
+# Expat in a non-standard location (rarely needed)
+./configure CPPFLAGS="-I/custom/include" LDFLAGS="-L/custom/lib"
 ```
 
 ## Installation
-
-### System-wide Installation
 
 ```bash
 # Install to /usr/local (default)
 sudo make install
 
-# Or specify a different prefix
-sudo make install PREFIX=/opt/gantt
+# Or somewhere else, e.g. a per-user install
+./configure --prefix=$HOME/.local
+make install
 ```
 
-This installs:
-- `gantt` binary to `$PREFIX/bin/`
-- Task scripts to `$PREFIX/lib/gantt/`
-
-### User Installation
-
-```bash
-make install PREFIX=$HOME/.local
-
-# Add to your shell profile:
-export PATH="$HOME/.local/bin:$HOME/.local/lib/gantt:$PATH"
-```
-
-### PATH Setup for Task Scripts
-
-For Gantt to find the bundled task scripts (`gantt_mkdir`, `gantt_copy`, etc.), add them to your PATH:
-
-```bash
-# If installed system-wide:
-export PATH="/usr/local/lib/gantt:$PATH"
-
-# If using from source directory:
-export PATH="/path/to/gantt/bin:$PATH"
-```
-
-Without this, Gantt falls back to system commands which work for basic operations but lack some features.
+`gantt`, its helper binaries and the task scripts (`gantt_zip`, `gantt_tar`,
+...) are all installed into `$prefix/bin`. Gantt finds task executables through
+`PATH`, so nothing more is needed as long as that directory is on your `PATH`.
+`make uninstall` removes them again.
 
 ## Usage
 
@@ -318,7 +301,7 @@ See [doc/EXECUTABLES.md](doc/EXECUTABLES.md) for details.
 
 ## License
 
-GNU General Public License v2.0 or later.
+GNU General Public License v3.0 or later.
 
 ## Author
 

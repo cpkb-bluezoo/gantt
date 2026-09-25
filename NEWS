@@ -1,0 +1,45 @@
+GNU gantt NEWS -- history of user-visible changes.
+
+* Noteworthy changes in release 2.0 (unreleased)
+
+** Build system
+
+  gantt now uses the GNU build system: ./configure && make && make install.
+  The compiled helper programs (gantt_copy, gantt_delete, ...) and the helper
+  scripts (gantt_zip, gantt_tar, ...) are now installed into the same
+  directory as gantt itself, so no extra PATH setup is needed.  'make check'
+  runs the test suite.
+
+** Licence
+
+  gantt is now distributed under the GNU GPL version 3 or later (previously
+  stated as version 2 or later).
+
+** New features
+
+  New SAX-style direct parser for improved performance.
+  New tasks: <parallel>, <sequential>, <condition>, <native2ascii>, <apply>,
+  <pathconvert>, <xmlproperty>, and the ivy tasks (including ivy:publish).
+  New <javaversion> condition, nested <manifest> in <jar>, <selector>
+  elements in <javac>, incremental compilation in <javac>, OS/platform
+  filtering for <exec>, and input redirection for <exec> and <java>.
+  Property capture (outputproperty, errorproperty, resultproperty).
+  Native C implementations of copy, delete, move, touch, chmod, mkdir and
+  concat.
+  Profiling support via the GANTT_PROFILE environment variable.
+
+** Changes
+
+  XML parsing uses expat instead of libxml2.
+
+See CHANGELOG.md for the full list, and ChangeLog for the commit history.
+
+* Noteworthy changes in release 1.0 (2005-02-18)
+
+  Initial release.
+
+Copyright (C) 2005, 2026 Chris Burdess
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.

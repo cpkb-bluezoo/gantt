@@ -4,19 +4,18 @@
  * 
  * This file is part of gantt.
  * 
- * gantt is free software; you can redistribute it and/or modify
+ * gantt is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * gantt is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
- * along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * along with gantt.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 #ifndef GANTT_H
@@ -25,10 +24,8 @@
 #include "util.h"
 #include "xml.h"
 
-/* Version information - update these for each release */
-#define GANTT_VERSION_MAJOR 2
-#define GANTT_VERSION_MINOR 0
-#define GANTT_VERSION "2.0"
+/* The version is set once, in AC_INIT in configure.ac (passed as -D flags) */
+#define GANTT_VERSION PACKAGE_VERSION
 #define GANTT_PREFIX "gantt_"
 #define GANTT_TASK_NAME "GANTT_TASK_NAME"
 #define GANTT_FILESET_SIZE "GANTT_FILESET_SIZE"

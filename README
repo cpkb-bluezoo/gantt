@@ -1,0 +1,31 @@
+gantt - a fast, lightweight replacement for Apache Ant, written in C
+
+Gantt parses standard Ant build.xml files and executes their targets.  Core
+tasks (javac, java, jar, javadoc, property handling, Ivy dependency
+resolution and more) are built in; file operations and archive tasks are
+small helper executables named gantt_<task> that gantt finds through PATH.
+
+Building and installing
+=======================
+
+  ./configure
+  make
+  make check
+  make install
+
+Building from a git checkout needs autoconf and automake; run ./autogen.sh
+first to create configure.  See INSTALL for the general instructions on
+running configure, and README.md for the requirements (a C compiler and
+the Expat XML library), usage and the design in more detail.
+
+gantt and its helper executables are all installed into $(bindir)
+(/usr/local/bin by default), so nothing beyond having that directory on
+your PATH is required.
+
+Licence
+=======
+
+gantt is free software, distributed under the GNU General Public License,
+version 3 or (at your option) any later version.  See COPYING.
+
+Report bugs to dog@gnu.org.  Security issues: see SECURITY.md.

@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Gantt Test Runner
 #
 # Runs all test projects and reports results.
@@ -11,8 +13,25 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Where the built gantt and helper binaries live.  'make check' sets
+# GANTT_BUILDDIR; run directly, it is the source tree (in-tree build).
+BUILD_DIR="${GANTT_BUILDDIR:-$PROJECT_ROOT}"
+
 # Set up PATH to include gantt executable and scripts
-export PATH="$PROJECT_ROOT:$PROJECT_ROOT/bin:$PATH"
+export PATH="$BUILD_DIR:$PROJECT_ROOT/bin:$PATH"
+
+# Tests write their output next to their build.xml, so run them from a copy
+# in the build tree.  This keeps the source tree clean (and read-only for
+# 'make distcheck').
+WORK_DIR="$BUILD_DIR/test-work"
+rm -rf "$WORK_DIR"
+mkdir -p "$WORK_DIR"
+for d in "$SCRIPT_DIR"/[0-9]*; do
+    if [ -d "$d" ]; then
+        cp -Rp "$d" "$WORK_DIR/"
+        chmod -R u+w "$WORK_DIR/$(basename "$d")"
+    fi
+done
 
 # Colors for output (if terminal supports it)
 if [ -t 1 ]; then
@@ -33,7 +52,7 @@ FAILED=0
 SKIPPED=0
 
 # Check gantt is built
-if [ ! -x "$PROJECT_ROOT/gantt" ]; then
+if [ ! -x "$BUILD_DIR/gantt" ]; then
     echo "${RED}Error: gantt executable not found. Run 'make' first.${NC}"
     exit 1
 fi
@@ -42,7 +61,8 @@ echo "========================================"
 echo "Gantt Test Suite"
 echo "========================================"
 echo "Project root: $PROJECT_ROOT"
-echo "PATH includes: $PROJECT_ROOT and $PROJECT_ROOT/bin"
+echo "PATH includes: $BUILD_DIR and $PROJECT_ROOT/bin"
+echo "Work directory: $WORK_DIR"
 echo ""
 
 # Run a single test
@@ -91,12 +111,12 @@ run_test() {
         FAILED=$((FAILED + 1))
     fi
     
-    cd "$SCRIPT_DIR"
+    cd "$WORK_DIR"
 }
 
 # Find and run all tests
 # Tests are directories starting with digits (for ordering)
-for test_dir in "$SCRIPT_DIR"/[0-9]*; do
+for test_dir in "$WORK_DIR"/[0-9]*; do
     if [ -d "$test_dir" ]; then
         run_test "$test_dir"
     fi

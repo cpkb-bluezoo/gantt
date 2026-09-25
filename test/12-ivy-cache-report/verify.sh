@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Verify ivy:cachepath / ivy:cachefileset / ivy:report test outputs
 #
 # ivy:cachepath/ivy:cachefileset results are checked via a fresh gantt run's

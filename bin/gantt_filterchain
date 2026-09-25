@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2005, 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # gantt_filterchain - Stub for filterchain element
 # Filterchain is a nested element, not a task, but may appear at project level
 # This stub allows parsing to continue

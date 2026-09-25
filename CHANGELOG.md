@@ -24,7 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Property capture (outputproperty, errorproperty, resultproperty)
 - Native C implementations for file operations (copy, delete, move, touch, chmod, mkdir, concat)
 - Profiling support via GANTT_PROFILE environment variable
-- Build metadata (git hash, build date) in version output
 
 ### Changed
 - Switched from libxml2 to expat for XML parsing
@@ -48,6 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File operations via shell scripts
 - Target dependency resolution
 
-[Unreleased]: https://github.com/dogburds/gantt/compare/v1.0...HEAD
-[1.0]: https://github.com/dogburds/gantt/releases/tag/v1.0
+[Unreleased]: https://github.com/cpkb-bluezoo/gantt/compare/v1.0...HEAD
+[1.0]: https://github.com/cpkb-bluezoo/gantt/releases/tag/v1.0
 

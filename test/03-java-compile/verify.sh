@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Verify Java compile test outputs
 
 TEST_DIR="$(dirname "$0")"

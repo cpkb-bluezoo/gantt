@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2005, 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # gantt_setproxy - Set proxy configuration for network operations
 # This task sets proxy settings - currently a no-op in gantt
 # Proxy settings should be configured via environment variables:

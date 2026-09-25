@@ -1,4 +1,6 @@
 #!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Verify apply test outputs
 
 SRC_DIR="$(dirname "$0")/src"

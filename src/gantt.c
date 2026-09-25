@@ -4,19 +4,18 @@
  * 
  * This file is part of gantt.
  * 
- * gantt is free software; you can redistribute it and/or modify
+ * gantt is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * gantt is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
- * along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * along with gantt.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 #include "gantt.h"
@@ -80,15 +79,9 @@ void print_project_help(project_t *project)
 void print_version(void)
 {
     printf("gantt version %s\n", GANTT_VERSION);
-#ifdef GANTT_GIT_HASH
-    printf("  Git commit: %s\n", GANTT_GIT_HASH);
-#endif
-#ifdef GANTT_BUILD_DATE
-    printf("  Build date: %s\n", GANTT_BUILD_DATE);
-#endif
     printf("  Copyright (C) 2005, 2026 Chris Burdess\n");
-    printf("  License: GPLv2+\n");
-    printf("  Homepage: https://github.com/dogburds/gantt\n");
+    printf("  License: GPLv3+\n");
+    printf("  Homepage: %s\n", PACKAGE_URL);
 }
 
 /**

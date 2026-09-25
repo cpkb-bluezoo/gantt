@@ -1,0 +1,2 @@
+The detailed history of gantt is kept in git.  Release tarballs contain a
+ChangeLog generated from the git log at 'make dist' time.
