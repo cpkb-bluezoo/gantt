@@ -4,7 +4,7 @@ dnl
 dnl This file is part of gantt; see COPYING for the licence terms.
 
 AC_PREREQ([2.69])
-AC_INIT([gantt], [2.0], [dog@gnu.org], [gantt],
+AC_INIT([gantt], [2.0.0], [dog@gnu.org], [gantt],
         [https://github.com/cpkb-bluezoo/gantt])
 AC_CONFIG_SRCDIR([src/gantt.c])
 AC_CONFIG_AUX_DIR([build-aux])

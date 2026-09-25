@@ -1,6 +1,10 @@
 GNU gantt NEWS -- history of user-visible changes.
 
-* Noteworthy changes in release 2.0 (unreleased)
+* Noteworthy changes in release 2.0.0 (2026-09-25)
+
+** Versioning
+
+  Releases now use Semantic Versioning (MAJOR.MINOR.PATCH), hence 2.0.0.
 
 ** Build system
 
@@ -27,6 +31,13 @@ GNU gantt NEWS -- history of user-visible changes.
   Native C implementations of copy, delete, move, touch, chmod, mkdir and
   concat.
   Profiling support via the GANTT_PROFILE environment variable.
+
+** Bug fixes
+
+  <echo> now honours file= and append= (it is a built-in task).
+  Nested <manifest> in <jar> and nested tasks in <parallel> and <sequential>
+  were being ignored, and are now handled.  New tasks <untar>, <gzip>,
+  <gunzip>, <bzip2> and <bunzip2>.
 
 ** Changes
 

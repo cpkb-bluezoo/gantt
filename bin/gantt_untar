@@ -1,0 +1,42 @@
+#!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# gantt_untar - Extract TAR archive
+#
+# Environment variables:
+#   src         - Source tar file
+#   dest        - Destination directory (default: .)
+#   compression - Compression type: none, gzip, bzip2, xz
+#                 (default: detected from the file name)
+
+src="${src:-}"
+dest="${dest:-.}"
+compression="${compression:-none}"
+
+if [ -z "$src" ]; then
+    echo "untar: 'src' attribute required" >&2
+    exit 1
+fi
+
+if [ ! -f "$src" ]; then
+    echo "untar: file not found: $src" >&2
+    exit 1
+fi
+
+case "$compression" in
+    gzip|gz)   comp_flag="z" ;;
+    bzip2|bz2) comp_flag="j" ;;
+    xz)        comp_flag="J" ;;
+    *)         comp_flag="" ;;
+esac
+
+# Auto-detect compression from filename
+case "$src" in
+    *.tar.gz|*.tgz)   comp_flag="z" ;;
+    *.tar.bz2|*.tbz2) comp_flag="j" ;;
+    *.tar.xz|*.txz)   comp_flag="J" ;;
+esac
+
+mkdir -p "$dest"
+
+tar -x${comp_flag}f "$src" -C "$dest"

@@ -1,0 +1,43 @@
+#!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# gantt_gunzip - Uncompress a gzip file
+#
+# The source file is left in place.
+#
+# Environment variables:
+#   src   - Source .gz file
+#   dest  - Output file, or a directory to write the uncompressed file into
+#           (default: alongside src)
+
+src="${src:-}"
+dest="${dest:-}"
+
+if [ -z "$src" ]; then
+    echo "gunzip: 'src' attribute required" >&2
+    exit 1
+fi
+
+if [ ! -f "$src" ]; then
+    echo "gunzip: file not found: $src" >&2
+    exit 1
+fi
+
+# The uncompressed name is the source name without the .gz suffix
+name=$(basename "$src")
+case "$name" in
+    *.gz) name="${name%.gz}" ;;
+    *)     name="$name.out" ;;
+esac
+
+if [ -z "$dest" ]; then
+    dest="$(dirname "$src")/$name"
+elif [ -d "$dest" ] || [ "${dest%/}" != "$dest" ]; then
+    mkdir -p "$dest"
+    dest="${dest%/}/$name"
+else
+    destdir=$(dirname "$dest")
+    [ -n "$destdir" ] && [ "$destdir" != "." ] && mkdir -p "$destdir"
+fi
+
+gzip -dc "$src" > "$dest"

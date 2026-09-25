@@ -1,0 +1,31 @@
+#!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# gantt_bzip2 - Compress a file with bzip2
+#
+# The source file is left in place.
+#
+# Environment variables:
+#   src       - Source file
+#   destfile  - Output file (default: src with .bz2 appended)
+
+src="${src:-}"
+destfile="${destfile:-}"
+
+if [ -z "$src" ]; then
+    echo "bzip2: 'src' attribute required" >&2
+    exit 1
+fi
+
+if [ ! -f "$src" ]; then
+    echo "bzip2: file not found: $src" >&2
+    exit 1
+fi
+
+[ -n "$destfile" ] || destfile="$src.bz2"
+
+# Create parent directory if needed
+destdir=$(dirname "$destfile")
+[ -n "$destdir" ] && [ "$destdir" != "." ] && mkdir -p "$destdir"
+
+bzip2 -c "$src" > "$destfile"

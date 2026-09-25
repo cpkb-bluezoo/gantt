@@ -1,0 +1,31 @@
+#!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# gantt_gzip - Compress a file with gzip
+#
+# The source file is left in place.
+#
+# Environment variables:
+#   src       - Source file
+#   destfile  - Output file (default: src with .gz appended)
+
+src="${src:-}"
+destfile="${destfile:-}"
+
+if [ -z "$src" ]; then
+    echo "gzip: 'src' attribute required" >&2
+    exit 1
+fi
+
+if [ ! -f "$src" ]; then
+    echo "gzip: file not found: $src" >&2
+    exit 1
+fi
+
+[ -n "$destfile" ] || destfile="$src.gz"
+
+# Create parent directory if needed
+destdir=$(dirname "$destfile")
+[ -n "$destdir" ] && [ "$destdir" != "." ] && mkdir -p "$destdir"
+
+gzip -c "$src" > "$destfile"

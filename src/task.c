@@ -66,10 +66,13 @@ void task_free(task_t *task)
     }
     slist_free(task->fileset_list);
     
-    /* Free nested tasks */
+    /* Free nested tasks. Their XML nodes are part of this task's XML tree,
+     * which is freed below, so they must not free them too. */
     list = task->nested_tasks;
     while (list) {
-        task_free((task_t *)list->data);
+        task_t *nested = list->data;
+        nested->xml_node = NULL;
+        task_free(nested);
         list = slist_next(list);
     }
     slist_free(task->nested_tasks);
@@ -383,7 +386,9 @@ bool task_init_children(task_t *task, xml_node_t *node)
             task_t *nested = task_alloc(task->target);
             if (nested && task_init(nested, cur)) {
                 task_add_nested(task, nested);
-            } else {
+            } else if (nested) {
+                /* Its XML node belongs to this task's tree, not to it */
+                nested->xml_node = NULL;
                 task_free(nested);
             }
         }
@@ -562,17 +567,6 @@ static char **build_fallback_argv(task_t *task, project_t *project, unsigned int
             argv[3] = NULL;
             *argc = 3;
         }
-    } else if (strcmp(task->name, "echo") == 0) {
-        /* echo <message> */
-        value = hashtable_lookup(task->attribute_dict, "message");
-        if (value) {
-            value = resolve_variables(value, project);
-            argv = malloc(sizeof(char *) * 3);
-            argv[0] = NULL;
-            argv[1] = strdup(value);
-            argv[2] = NULL;
-            *argc = 2;
-        }
     }
     
     return argv;
@@ -625,6 +619,7 @@ bool task_invoke(task_t *task, project_t *project)
         hashtable_insert(invoke_dict, BASENAME, basename_invoke);
         hashtable_insert(invoke_dict, DIRNAME, dirname_invoke);
         hashtable_insert(invoke_dict, FAIL, fail_invoke);
+        hashtable_insert(invoke_dict, ECHO, echo_invoke);
         hashtable_insert(invoke_dict, "condition", condition_invoke);
         hashtable_insert(invoke_dict, "local", local_invoke);
         hashtable_insert(invoke_dict, "native2ascii", native2ascii_invoke);

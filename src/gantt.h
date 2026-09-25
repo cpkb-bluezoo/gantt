@@ -92,6 +92,7 @@
 #define BASENAME "basename"
 #define DIRNAME "dirname"
 #define FAIL "fail"
+#define ECHO "echo"
 #define SRC_DIR "srcdir"
 
 /* Selector types */
@@ -243,6 +244,7 @@ bool apply_invoke(task_t *task, project_t *project);
 bool basename_invoke(task_t *task, project_t *project);
 bool dirname_invoke(task_t *task, project_t *project);
 bool fail_invoke(task_t *task, project_t *project);
+bool echo_invoke(task_t *task, project_t *project);
 bool local_invoke(task_t *task, project_t *project);
 bool native2ascii_invoke(task_t *task, project_t *project);
 bool ivy_resolve_invoke(task_t *task, project_t *project);

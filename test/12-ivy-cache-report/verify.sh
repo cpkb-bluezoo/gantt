@@ -5,9 +5,7 @@
 #
 # ivy:cachepath/ivy:cachefileset results are checked via a fresh gantt run's
 # console output (from the "cachepath result: .../cachefileset result: ..."
-# <echo message> lines), not a written file - gantt's <echo file="..."> does
-# not actually write to disk (it falls back to the system echo command,
-# which ignores the file= attribute), a pre-existing, unrelated gap.
+# <echo message> lines).
 
 BUILD_DIR="$(dirname "$0")/build"
 REPORT_FILE="$BUILD_DIR/reports/test-cacherpt-default.xml"

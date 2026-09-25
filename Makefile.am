@@ -25,12 +25,17 @@ bin_PROGRAMS += \
 
 # Task scripts that are not compiled.
 dist_bin_SCRIPTS = \
+	bin/gantt_bunzip2 \
+	bin/gantt_bzip2 \
 	bin/gantt_filterchain \
+	bin/gantt_gunzip \
+	bin/gantt_gzip \
 	bin/gantt_replace \
 	bin/gantt_replaceregexp \
 	bin/gantt_setproxy \
 	bin/gantt_sleep \
 	bin/gantt_tar \
+	bin/gantt_untar \
 	bin/gantt_unzip \
 	bin/gantt_war \
 	bin/gantt_zip
@@ -53,6 +58,7 @@ gantt_SOURCES = \
 	src/java_task.c \
 	src/tstamp.c \
 	src/fail.c \
+	src/echo.c \
 	src/native2ascii.c \
 	src/ivy_parse.c \
 	src/ivy_resolve.c \

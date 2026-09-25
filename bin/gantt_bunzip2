@@ -1,0 +1,43 @@
+#!/bin/sh
+# Copyright (C) 2026 Chris Burdess <dog@gnu.org>
+# SPDX-License-Identifier: GPL-3.0-or-later
+# gantt_bunzip2 - Uncompress a bzip2 file
+#
+# The source file is left in place.
+#
+# Environment variables:
+#   src   - Source .bz2 file
+#   dest  - Output file, or a directory to write the uncompressed file into
+#           (default: alongside src)
+
+src="${src:-}"
+dest="${dest:-}"
+
+if [ -z "$src" ]; then
+    echo "bunzip2: 'src' attribute required" >&2
+    exit 1
+fi
+
+if [ ! -f "$src" ]; then
+    echo "bunzip2: file not found: $src" >&2
+    exit 1
+fi
+
+# The uncompressed name is the source name without the .bz2 suffix
+name=$(basename "$src")
+case "$name" in
+    *.bz2) name="${name%.bz2}" ;;
+    *)     name="$name.out" ;;
+esac
+
+if [ -z "$dest" ]; then
+    dest="$(dirname "$src")/$name"
+elif [ -d "$dest" ] || [ "${dest%/}" != "$dest" ]; then
+    mkdir -p "$dest"
+    dest="${dest%/}/$name"
+else
+    destdir=$(dirname "$dest")
+    [ -n "$destdir" ] && [ "$destdir" != "." ] && mkdir -p "$destdir"
+fi
+
+bzip2 -dc "$src" > "$dest"

@@ -85,6 +85,7 @@ typedef struct {
     xml_node_t *current_xml_node;  /* Current node being built */
     int xml_node_depth;            /* Depth within task XML */
     bool direct_child_parsing;     /* true = process children directly, false = build XML */
+    bool in_manifest;              /* Inside a task's nested <manifest> (direct mode) */
     
     /* Stack for nested elements */
     state_entry_t *state_stack;
@@ -407,10 +408,13 @@ static void handle_selector_definition_start(parse_context_t *ctx, const char *n
  * Element Handlers for Target Level (Tasks)
  * ======================================================================== */
 
-/* Check if a task needs XML node at runtime (for nested condition evaluation) */
+/* Check if a task needs its children built as an XML tree: <condition> for
+ * nested condition evaluation, <parallel>/<sequential> because their nested
+ * tasks are instantiated from that tree (see task_init_children) */
 static bool task_needs_xml_node(const char *name)
 {
-    return xml_streq(name, "condition");
+    return xml_streq(name, "condition") || xml_streq(name, PARALLEL) ||
+           xml_streq(name, SEQUENTIAL);
 }
 
 static void handle_task_start(parse_context_t *ctx, const char *name, const char **attrs)
@@ -458,12 +462,54 @@ static void handle_task_start(parse_context_t *ctx, const char *name, const char
  * Element Handlers for Task Children
  * ======================================================================== */
 
+/**
+ * Appends a line ("Name: Value", or a "Name: section" header) to the task's
+ * nested manifest list, which the jar task turns into a manifest file.
+ */
+static void add_manifest_entry(task_t *task, char *entry)
+{
+    slist_t *manifest_list = hashtable_lookup(task->attribute_dict, MANIFEST_ATTR);
+    
+    if (!manifest_list) {
+        manifest_list = slist_new(entry);
+        hashtable_insert(task->attribute_dict, strdup(MANIFEST_ATTR), manifest_list);
+    } else {
+        slist_append(slist_last(manifest_list), entry);
+    }
+}
+
 static void handle_task_child_start(parse_context_t *ctx, const char *name, const char **attrs)
 {
     task_t *task = ctx->current_task;
     
     /* Direct parsing mode - process children without building XML nodes */
     if (ctx->direct_child_parsing) {
+        
+        /* Nested <manifest> (jar task): <attribute name= value=/> and
+         * <section name=> children become "Name: Value" manifest lines */
+        if (xml_streq(name, MANIFEST)) {
+            ctx->in_manifest = true;
+            ctx->xml_node_depth++;
+            return;
+        }
+        if (ctx->in_manifest && task) {
+            if (xml_streq(name, "attribute")) {
+                const char *attr_name = get_attr(attrs, "name");
+                const char *attr_value = get_attr(attrs, "value");
+                
+                if (attr_name && attr_value) {
+                    add_manifest_entry(task, str_concat(attr_name, ": ", attr_value, NULL));
+                }
+            } else if (xml_streq(name, "section")) {
+                const char *section_name = get_attr(attrs, "name");
+                
+                if (section_name) {
+                    add_manifest_entry(task, str_concat("\nName: ", section_name, NULL));
+                }
+            }
+            ctx->xml_node_depth++;
+            return;
+        }
         
         /* Fileset/dirset children - they have their own depth tracking */
         if (xml_streq(name, FILESET) || xml_streq(name, DIRSET) ||
@@ -837,6 +883,9 @@ static void XMLCALL end_element(void *user_data, const char *name)
                 xml_streq(name, "zipfileset") || xml_streq(name, "tarfileset")) {
                 ctx->current_fileset = NULL;
                 ctx->fileset_depth = 0;
+            }
+            if (xml_streq(name, MANIFEST)) {
+                ctx->in_manifest = false;
             }
             /* Other children (args, includes, etc.) need no special cleanup */
             break;
